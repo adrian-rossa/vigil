@@ -1,0 +1,15 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  dependsOn:
+    - name: cluster-sources
+  path: ./infra/overlays/local/kubernetes/clusters/local/infrastructure
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  timeout: 15m
