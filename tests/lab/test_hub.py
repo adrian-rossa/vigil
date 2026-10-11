@@ -6,7 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from vigil_lab.hub import FRAME_HEADER_BYTES, SOCKET_MODE, Hub, serve
+from vigil_lab.hub import FRAME_HEADER_BYTES, MAX_FRAME_BYTES, SOCKET_MODE, Hub, serve
 
 ETHERNET_MTU = 1500
 FRAME = b"x" * ETHERNET_MTU
@@ -94,6 +94,28 @@ async def test_hub_survives_a_client_closing_mid_frame(socket_path: Path) -> Non
         await sender.drain()
         await asyncio.wait_for(_until_sentinel(reader), RECEIVE_TIMEOUT_S)
         for writer in (receiver, sender):
+            writer.close()
+
+
+async def test_hub_disconnects_a_client_announcing_an_oversized_frame(
+    socket_path: Path,
+) -> None:
+    hub = Hub()
+    server = await asyncio.start_unix_server(hub.relay, path=str(socket_path))
+    async with server:
+        oversized_reader, oversized = await asyncio.open_unix_connection(
+            str(socket_path)
+        )
+        reader, receiver = await asyncio.open_unix_connection(str(socket_path))
+        _, sender = await asyncio.open_unix_connection(str(socket_path))
+        await _wait_for_clients(hub, CLIENT_COUNT)
+        oversized.write((MAX_FRAME_BYTES + 1).to_bytes(FRAME_HEADER_BYTES, "big"))
+        await oversized.drain()
+        assert await asyncio.wait_for(oversized_reader.read(), RECEIVE_TIMEOUT_S) == b""
+        sender.write(_packet(SENTINEL))
+        await sender.drain()
+        await asyncio.wait_for(_until_sentinel(reader), RECEIVE_TIMEOUT_S)
+        for writer in (oversized, receiver, sender):
             writer.close()
 
 

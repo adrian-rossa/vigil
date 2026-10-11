@@ -4,6 +4,8 @@ import asyncio
 from pathlib import Path
 
 FRAME_HEADER_BYTES = 4
+# qemu NET_BUFSIZE, the largest frame a stream netdev sends
+MAX_FRAME_BYTES = 4096 + 65536
 WRITE_BUFFER_LIMIT_BYTES = 1024 * 1024
 SOCKET_MODE = 0o600
 
@@ -21,7 +23,10 @@ class Hub:
         try:
             while True:
                 header = await reader.readexactly(FRAME_HEADER_BYTES)
-                frame = await reader.readexactly(int.from_bytes(header, "big"))
+                length = int.from_bytes(header, "big")
+                if length > MAX_FRAME_BYTES:
+                    return
+                frame = await reader.readexactly(length)
                 self.forward(writer, header + frame)
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
