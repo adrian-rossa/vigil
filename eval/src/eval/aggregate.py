@@ -648,6 +648,7 @@ def write_step_summary(
     seed_count: int | None = None,
 ) -> None:
     records = _load_records(runs_dir, index_path)
+    _single_target(records)
     if scenarios_dir is not None:
         _correct_escalation_success(records, scenarios_dir)
         _correct_outcome_success(records, scenarios_dir)

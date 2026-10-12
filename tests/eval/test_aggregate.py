@@ -1389,6 +1389,16 @@ def test_aggregate_rejects_records_from_two_targets(tmp_path: Path) -> None:
         aggregate_runs(*_two_runs(tmp_path, "hetzner", "runner"))
 
 
+def test_step_summary_rejects_records_from_two_targets(tmp_path: Path) -> None:
+    from eval.aggregate import MixedTargetsError, write_step_summary
+
+    runs_dir, index_path, scenarios_dir = _two_runs(tmp_path, "hetzner", "runner")
+    output_dir = tmp_path / "results"
+    with pytest.raises(MixedTargetsError, match="hetzner, runner"):
+        write_step_summary(runs_dir, index_path, output_dir, scenarios_dir)
+    assert not output_dir.exists()
+
+
 def test_aggregate_treats_missing_target_as_hetzner_when_mixing(
     tmp_path: Path,
 ) -> None:
