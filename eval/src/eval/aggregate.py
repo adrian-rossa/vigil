@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from orchestrator.models import DEFAULT_EVAL_TARGET
+from orchestrator.models import DEFAULT_EVAL_TARGET, EVAL_TARGETS
 
 log = logging.getLogger(__name__)
 
@@ -16,8 +16,18 @@ class MixedTargetsError(ValueError):
     pass
 
 
+class UnknownTargetError(ValueError):
+    pass
+
+
 def _single_target(records: list[dict]) -> str:
     targets = sorted({r.get("target", DEFAULT_EVAL_TARGET) for r in records})
+    unknown = [t for t in targets if t not in EVAL_TARGETS]
+    if unknown:
+        raise UnknownTargetError(
+            f"run records name unknown targets {unknown}; "
+            f"expected one of {', '.join(EVAL_TARGETS)}"
+        )
     if len(targets) > 1:
         raise MixedTargetsError(
             f"run records span several targets ({', '.join(targets)}); "

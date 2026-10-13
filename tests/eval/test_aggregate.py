@@ -1399,6 +1399,13 @@ def test_step_summary_rejects_records_from_two_targets(tmp_path: Path) -> None:
     assert not output_dir.exists()
 
 
+def test_aggregate_rejects_an_unknown_target(tmp_path: Path) -> None:
+    from eval.aggregate import UnknownTargetError, aggregate_runs
+
+    with pytest.raises(UnknownTargetError, match="'runer'"):
+        aggregate_runs(*_two_runs(tmp_path, "runer", "runer"))
+
+
 def test_aggregate_treats_missing_target_as_hetzner_when_mixing(
     tmp_path: Path,
 ) -> None:

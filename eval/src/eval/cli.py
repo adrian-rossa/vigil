@@ -455,6 +455,7 @@ def aggregate_cmd(
     and step_summary.md."""
     from eval.aggregate import (
         MixedTargetsError,
+        UnknownTargetError,
         aggregate_runs,
         write_report,
         write_step_summary,
@@ -466,7 +467,7 @@ def aggregate_cmd(
 
     try:
         summary = aggregate_runs(runs_dir, index_path, scenarios_dir, seed_count)
-    except MixedTargetsError as exc:
+    except (MixedTargetsError, UnknownTargetError) as exc:
         raise click.ClickException(str(exc)) from exc
     write_report(summary, output_dir)
     write_step_summary(runs_dir, index_path, output_dir, scenarios_dir, seed_count)
