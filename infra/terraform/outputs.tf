@@ -1,9 +1,9 @@
-output "master_public_ip" {
-  value = hcloud_server.master.ipv4_address
+output "control_plane_public_ip" {
+  value = hcloud_server.control_plane.ipv4_address
 }
 
-output "master_private_ip" {
-  value = "10.0.0.10"
+output "control_plane_private_ip" {
+  value = local.control_plane_ip
 }
 
 output "worker_1_public_ip" {
@@ -11,7 +11,7 @@ output "worker_1_public_ip" {
 }
 
 output "worker_1_private_ip" {
-  value = "10.0.0.20"
+  value = local.host_ips["vigil-worker-1"]
 }
 
 output "worker_2_public_ip" {
@@ -19,7 +19,7 @@ output "worker_2_public_ip" {
 }
 
 output "worker_2_private_ip" {
-  value = "10.0.0.30"
+  value = local.host_ips["vigil-worker-2"]
 }
 
 output "agent_public_ip" {
@@ -27,9 +27,9 @@ output "agent_public_ip" {
 }
 
 output "agent_private_ip" {
-  value = "10.0.0.40"
+  value = local.agent_ip
 }
 
 output "kubeconfig_hint" {
-  value = "KUBECONFIG=~/.kube/hetzner-vigil kubectl get nodes  # context: hetzner-vigil"
+  value = "KUBECONFIG=~/.kube/hetzner-vigil-${var.group_name} kubectl get nodes  # context: hetzner-vigil-${var.group_name}"
 }

@@ -7,6 +7,13 @@ packer {
   }
 }
 
+locals {
+  vigil_labels = {
+    "vigil-managed" = "true"
+    "vigil-run"     = var.campaign_run_id
+  }
+}
+
 source "hcloud" "nixos" {
   token                = var.hcloud_token
   image                = "debian-12"
@@ -16,11 +23,12 @@ source "hcloud" "nixos" {
   ssh_private_key_file = var.ssh_private_key_file
 
   snapshot_name = "vigil-nixos-${var.role}-${var.nixos_hash}"
-  snapshot_labels = {
+  snapshot_labels = merge(local.vigil_labels, {
     "vigil-role"       = var.role
     "vigil-nixos-hash" = var.nixos_hash
-    "vigil-managed"    = "true"
-  }
+  })
+  server_labels   = local.vigil_labels
+  ssh_keys_labels = local.vigil_labels
 
   ssh_handshake_attempts = 60
   ssh_timeout            = "15m"
@@ -36,7 +44,7 @@ build {
       "chmod 700 /tmp/packer-extra-files/root/.ssh",
       "cp ${var.ssh_private_key_file}.pub /tmp/packer-extra-files/root/.ssh/authorized_keys",
       "chmod 600 /tmp/packer-extra-files/root/.ssh/authorized_keys",
-      "nix run --accept-flake-config 'github:nix-community/nixos-anywhere?ref=1.13.0' -- --extra-files /tmp/packer-extra-files --ssh-option 'IdentityFile=${var.ssh_private_key_file}' --ssh-option 'StrictHostKeyChecking=no' --ssh-option 'UserKnownHostsFile=/dev/null' --flake 'github:lucawalz/vigil/${var.nixos_commit_sha}?dir=infra/nixos#hetzner-${var.role}' root@${build.Host}"
+      "nix run --accept-flake-config 'github:nix-community/nixos-anywhere?ref=1.13.0' -- --extra-files /tmp/packer-extra-files --ssh-option 'IdentityFile=${var.ssh_private_key_file}' --ssh-option 'StrictHostKeyChecking=no' --ssh-option 'UserKnownHostsFile=/dev/null' --flake 'github:lucawalz/vigil/${var.nixos_commit_sha}?dir=infra/nixos#vigil-${var.role}' root@${build.Host}"
     ]
   }
 

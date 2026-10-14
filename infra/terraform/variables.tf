@@ -22,7 +22,7 @@ variable "vigil_branch" {
 variable "github_token" {
   type        = string
   sensitive   = true
-  description = "GitHub PAT with repo scope - used by flux bootstrap to create deploy key (set via TF_VAR_github_token)"
+  description = "GitHub token for the orchestrator's pull requests and pushes (set via TF_VAR_github_token)"
 }
 
 variable "ollama_api_key" {
@@ -67,6 +67,17 @@ variable "operator_ssh_pubkey" {
   sensitive   = true
   default     = ""
   description = "Operator's personal public SSH key injected into all servers for debugging access"
+}
+
+variable "campaign_run_id" {
+  type        = string
+  default     = "local"
+  description = "Value of the vigil-run label on every resource; selects the snapshots built for the same run"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9]([A-Za-z0-9._-]{0,61}[A-Za-z0-9])?$", var.campaign_run_id))
+    error_message = "campaign_run_id must be a valid Hetzner label value."
+  }
 }
 
 variable "location" {

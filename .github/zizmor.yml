@@ -1,0 +1,8 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        "*": ref-pin
+  # actionlint rejects the $/ self-repository form this audit suggests
+  self-repository:
+    disable: true

@@ -13,7 +13,7 @@ type TextResult struct {
 }
 
 func NewServer(client nixos.NixOSClient, cfg *config.Config) *server.MCPServer {
-	s := server.NewMCPServer("nixos-mcp", "1.0.0",
+	s := server.NewMCPServer("nixos-mcp", "1.1.0",
 		server.WithToolCapabilities(true),
 	)
 
@@ -98,7 +98,7 @@ func NewServer(client nixos.NixOSClient, cfg *config.Config) *server.MCPServer {
 	s.AddTool(
 		mcp.NewTool("get_nix_path",
 			mcp.WithDescription("Return repo-relative NixOS config path for a known hostname"),
-			mcp.WithString("hostname", mcp.Required(), mcp.Description("NixOS host name e.g. hetzner-master")),
+			mcp.WithString("hostname", mcp.Required(), mcp.Description("NixOS host name e.g. vigil-worker-1")),
 			mcp.WithOutputSchema[TextResult](),
 		),
 		nixos.HandleGetNixPath(client, cfg.MaxOutputBytesDescribe),

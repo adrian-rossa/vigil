@@ -5,11 +5,11 @@ variable "hcloud_token" {
 
 variable "role" {
   type        = string
-  description = "Server role: master, worker-1, worker-2, or agent"
+  description = "Server role: control-plane-1, worker-1, worker-2, or agent"
 
   validation {
-    condition     = contains(["master", "worker-1", "worker-2", "agent"], var.role)
-    error_message = "Role must be one of: master, worker-1, worker-2, or agent."
+    condition     = contains(["control-plane-1", "worker-1", "worker-2", "agent"], var.role)
+    error_message = "Role must be one of: control-plane-1, worker-1, worker-2, or agent."
   }
 }
 
@@ -26,4 +26,9 @@ variable "nixos_hash" {
 variable "ssh_private_key_file" {
   type        = string
   description = "Path to the ED25519 private key file used for both Packer SSH and nixos-anywhere"
+}
+
+variable "campaign_run_id" {
+  type        = string
+  description = "Run whose vigil-run label the snapshot and the build server carry"
 }

@@ -14,6 +14,8 @@ import (
 	"time"
 
 	gossh "golang.org/x/crypto/ssh"
+
+	"github.com/lucawalz/vigil/mcp-servers/nixos-mcp/internal/config"
 )
 
 const (
@@ -65,16 +67,17 @@ type NixOSClient interface {
 }
 
 type realNixOSClient struct {
-	user         string
-	signer       gossh.Signer
-	allowedHosts []string
-	dialTimeout  time.Duration
-	dialRetries  int
-	dialBackoff  time.Duration
-	dialFunc     dialFunc
+	user        string
+	signer      gossh.Signer
+	hostAddrs   map[string]string
+	dialTimeout time.Duration
+	dialRetries int
+	dialBackoff time.Duration
+	dialFunc    dialFunc
+	runCommand  func(ctx context.Context, host, cmd string) (string, error)
 }
 
-func NewRealNixOSClient(user, keyPath string, allowedHosts []string, dialTimeout time.Duration, dialRetries int, dialBackoff time.Duration) (NixOSClient, error) {
+func NewRealNixOSClient(user, keyPath string, hosts []config.SSHHost, dialTimeout time.Duration, dialRetries int, dialBackoff time.Duration) (NixOSClient, error) {
 	expanded, err := expandTilde(keyPath)
 	if err != nil {
 		return nil, err
@@ -96,34 +99,40 @@ func NewRealNixOSClient(user, keyPath string, allowedHosts []string, dialTimeout
 	if dialBackoff <= 0 {
 		dialBackoff = defaultSSHDialBackoff
 	}
-	return &realNixOSClient{
-		user:         user,
-		signer:       signer,
-		allowedHosts: allowedHosts,
-		dialTimeout:  dialTimeout,
-		dialRetries:  dialRetries,
-		dialBackoff:  dialBackoff,
-		dialFunc:     (&net.Dialer{Timeout: dialTimeout}).DialContext,
-	}, nil
+	hostAddrs := make(map[string]string, len(hosts))
+	for _, h := range hosts {
+		hostAddrs[h.Name] = h.Addr
+	}
+	client := &realNixOSClient{
+		user:        user,
+		signer:      signer,
+		hostAddrs:   hostAddrs,
+		dialTimeout: dialTimeout,
+		dialRetries: dialRetries,
+		dialBackoff: dialBackoff,
+		dialFunc:    (&net.Dialer{Timeout: dialTimeout}).DialContext,
+	}
+	client.runCommand = client.runSSH
+	return client, nil
 }
 
-func validateHost(host string, allowed []string) error {
-	if len(allowed) == 0 {
-		return fmt.Errorf("SSH_HOSTS is not configured; refusing to connect")
+func (c *realNixOSClient) dialAddress(host string) (string, error) {
+	if len(c.hostAddrs) == 0 {
+		return "", fmt.Errorf("SSH_HOSTS is not configured; refusing to connect")
 	}
-	for _, h := range allowed {
-		if h == host {
-			return nil
-		}
+	addr, ok := c.hostAddrs[host]
+	if !ok {
+		return "", fmt.Errorf("host %q is not in SSH_HOSTS allow-list", host)
 	}
-	return fmt.Errorf("host %q is not in SSH_HOSTS allow-list", host)
+	return addr, nil
 }
 
 func (c *realNixOSClient) runSSH(ctx context.Context, host, cmd string) (string, error) {
 	if strings.ContainsAny(host, ":/ \t\n\r") {
 		return "", fmt.Errorf("host contains invalid character")
 	}
-	if err := validateHost(host, c.allowedHosts); err != nil {
+	addr, err := c.dialAddress(host)
+	if err != nil {
 		return "", err
 	}
 	if err := validateCommand(cmd); err != nil {
@@ -136,7 +145,6 @@ func (c *realNixOSClient) runSSH(ctx context.Context, host, cmd string) (string,
 		Timeout:         c.dialTimeout,
 	}
 
-	addr := host + ":22"
 	netConn, err := c.dialWithRetry(ctx, addr)
 	if err != nil {
 		return "", fmt.Errorf("ssh dial %s: %w", host, err)
@@ -212,16 +220,20 @@ func (c *realNixOSClient) CommitGeneration(ctx context.Context, host string) (st
 }
 
 func (c *realNixOSClient) RebuildTest(ctx context.Context, host string) (string, error) {
-	_, rebuildErr := c.runSSH(ctx, host, fmt.Sprintf("sudo nixos-rebuild test --flake /opt/vigil/infra/nixos#%s", host))
+	cmd, err := c.flakeRebuildCommand(ctx, host, "test")
+	if err != nil {
+		return "", err
+	}
+	_, rebuildErr := c.runCommand(ctx, host, cmd)
 	exitCode := 0
 	if rebuildErr != nil {
 		exitCode = 1
 	}
 
-	healthGate, _ := c.runSSH(ctx, host, "systemctl is-active rollback-gate.service")
+	healthGate, _ := c.runCommand(ctx, host, "systemctl is-active rollback-gate.service")
 	healthGate = strings.TrimSpace(healthGate)
 
-	k8sReady, _ := c.runSSH(ctx, host, `kubectl get node $(hostname) -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'`)
+	k8sReady, _ := c.runCommand(ctx, host, `kubectl get node $(hostname) -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'`)
 	k8sReady = strings.TrimSpace(k8sReady)
 
 	result := fmt.Sprintf("nixos-rebuild exit: %d\nhealth-gate: %s\nk8s-node-ready: %s", exitCode, healthGate, k8sReady)
@@ -264,25 +276,22 @@ func (c *realNixOSClient) EtcdSnapshotSave(ctx context.Context, host, destPath s
 	return c.runSSH(ctx, host, fmt.Sprintf("sudo etcdctl snapshot save %s", destPath))
 }
 
-var knownNixOSHosts = map[string]bool{
-	"hetzner-master":   true,
-	"hetzner-worker-1": true,
-	"hetzner-worker-2": true,
-	"hetzner-agent":    true,
-}
-
 func (c *realNixOSClient) GetNixPath(_ context.Context, hostname string) (string, error) {
 	if err := validateArg("hostname", hostname); err != nil {
 		return "", err
 	}
-	if !knownNixOSHosts[hostname] {
+	if _, ok := c.hostAddrs[hostname]; !ok {
 		return "", fmt.Errorf("unknown hostname: %q", hostname)
 	}
 	return fmt.Sprintf("infra/nixos/hosts/%s/default.nix", hostname), nil
 }
 
 func (c *realNixOSClient) DryBuild(ctx context.Context, host string) (string, error) {
-	return c.runSSH(ctx, host, fmt.Sprintf("sudo nixos-rebuild dry-activate --flake /opt/vigil/infra/nixos#%s", host))
+	cmd, err := c.flakeRebuildCommand(ctx, host, "dry-activate")
+	if err != nil {
+		return "", err
+	}
+	return c.runCommand(ctx, host, cmd)
 }
 
 func (c *realNixOSClient) TriggerReconcile(ctx context.Context, host string) (string, error) {

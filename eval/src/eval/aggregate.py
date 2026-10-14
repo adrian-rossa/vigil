@@ -7,8 +7,34 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from orchestrator.models import DEFAULT_EVAL_TARGET, EVAL_TARGETS
 
 log = logging.getLogger(__name__)
+
+
+class MixedTargetsError(ValueError):
+    pass
+
+
+class UnknownTargetError(ValueError):
+    pass
+
+
+def _single_target(records: list[dict]) -> str:
+    targets = sorted({r.get("target", DEFAULT_EVAL_TARGET) for r in records})
+    unknown = [t for t in targets if t not in EVAL_TARGETS]
+    if unknown:
+        raise UnknownTargetError(
+            f"run records name unknown targets {unknown}; "
+            f"expected one of {', '.join(EVAL_TARGETS)}"
+        )
+    if len(targets) > 1:
+        raise MixedTargetsError(
+            f"run records span several targets ({', '.join(targets)}); "
+            "aggregate each target separately"
+        )
+    return targets[0] if targets else DEFAULT_EVAL_TARGET
+
 
 _GROUP_LABELS: dict[str, str] = {
     "k8s": "Kubernetes Layer",
@@ -378,6 +404,7 @@ def aggregate_runs(
 ) -> dict[str, Any]:
     """Compute per-model and per-scenario metric tables plus escalation accuracy."""
     records = _load_records(runs_dir, index_path)
+    target = _single_target(records)
     planned_scenarios: list[str] = (
         sorted(p.name for p in scenarios_dir.iterdir() if p.is_dir())
         if scenarios_dir.is_dir()
@@ -392,6 +419,7 @@ def aggregate_runs(
             "escalation": {},
             "totals": {"n": 0, "n_models": 0, "n_scenarios": 0},
             "planned_scenarios": planned_scenarios,
+            "target": target,
         }
 
     by_model: dict[str, list[dict]] = {}
@@ -433,6 +461,7 @@ def aggregate_runs(
             "n_scenarios": len(by_scenario),
         },
         "planned_scenarios": planned_scenarios,
+        "target": target,
     }
 
 
@@ -551,6 +580,8 @@ def write_report(summary: dict[str, Any], output_dir: Path) -> None:
         f"and {summary['totals']['n_scenarios']} scenarios."
     )
     lines.append("")
+    lines.append(f"Target: {summary['target']}.")
+    lines.append("")
 
     lines.append("## Per-Model Summary")
     lines.append("")
@@ -627,6 +658,7 @@ def write_step_summary(
     seed_count: int | None = None,
 ) -> None:
     records = _load_records(runs_dir, index_path)
+    _single_target(records)
     if scenarios_dir is not None:
         _correct_escalation_success(records, scenarios_dir)
         _correct_outcome_success(records, scenarios_dir)
