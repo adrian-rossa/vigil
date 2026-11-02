@@ -285,7 +285,7 @@ def _call_then_report(*calls: str) -> FunctionModel:
     return FunctionModel(model_fn)
 
 
-def _last_request_parts(messages: list[ModelMessage], kind: type) -> list:
+def _request_parts(messages: list[ModelMessage], kind: type) -> list:
     return [
         part
         for m in messages
@@ -296,9 +296,7 @@ def _last_request_parts(messages: list[ModelMessage], kind: type) -> list:
 
 
 def _tool_returns(messages: list[ModelMessage], name: str) -> list[ToolReturnPart]:
-    return [
-        p for p in _last_request_parts(messages, ToolReturnPart) if p.tool_name == name
-    ]
+    return [p for p in _request_parts(messages, ToolReturnPart) if p.tool_name == name]
 
 
 def test_every_untrusted_field_of_the_user_message_is_fenced(
@@ -383,7 +381,7 @@ async def test_tool_return_reaches_the_model_fenced(
     (part,) = _tool_returns(messages, "get_logs")
     assert 'source="tool:get_logs"' in part.content
     assert _INJECTION in part.content
-    first = _last_request_parts(messages[:1], UserPromptPart)[0].content
+    first = _request_parts(messages[:1], UserPromptPart)[0].content
     nonce = re.search(r"<vigil-data-(\w+) ", part.content).group(1)
     assert f"<vigil-data-{nonce} " in first
 
@@ -412,7 +410,7 @@ async def test_tool_error_reaches_the_model_fenced_with_its_hint(
         _context(),
         model=_call_then_report("read_file"),
     )
-    (part,) = _last_request_parts(messages, RetryPromptPart)
+    (part,) = _request_parts(messages, RetryPromptPart)
     assert 'source="tool:read_file"' in part.content
     assert error in part.content
 
@@ -427,7 +425,7 @@ async def test_guard_messages_stay_outside_the_fences(
         _context(),
         model=_call_then_report("get_logs", "get_logs"),
     )
-    (part,) = _last_request_parts(messages, RetryPromptPart)
+    (part,) = _request_parts(messages, RetryPromptPart)
     assert "has already been called" in part.content
     assert "vigil-data" not in part.content
 
@@ -522,7 +520,7 @@ async def _remediate(
         model=FunctionModel(model_fn),
         agent_branch="remediation/run-x",
     )
-    task = _last_request_parts(messages[:1], UserPromptPart)[0].content
+    task = _request_parts(messages[:1], UserPromptPart)[0].content
     return result, messages, task
 
 
@@ -572,7 +570,7 @@ async def test_external_tool_returns_reach_the_model_fenced(name: str) -> None:
 )
 async def test_tool_errors_reach_the_model_fenced(name: str) -> None:
     _, messages, _ = await _remediate({name: ModelRetry("boom")}, calls=(name,))
-    (part,) = _last_request_parts(messages, RetryPromptPart)
+    (part,) = _request_parts(messages, RetryPromptPart)
     assert f'source="tool:{name}"' in part.content
     assert "boom" in part.content
 
