@@ -109,7 +109,7 @@ def _toolset(wrapped: AsyncMock) -> FencingToolset:
     return FencingToolset(wrapped=wrapped, nonce=_NONCE, tools=_TOOLS)
 
 
-async def _call(toolset, name: str):
+async def _call(toolset: FencingToolset | CircuitBreakerToolset, name: str) -> object:
     return await toolset.call_tool(name, {}, MagicMock(), MagicMock())
 
 
