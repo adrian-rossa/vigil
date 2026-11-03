@@ -100,6 +100,23 @@ def test_fence_value_body_matches_the_json_sent_to_the_model() -> None:
     )
 
 
+def test_fence_of_empty_text_keeps_an_empty_body_line() -> None:
+    assert fence("", "fault", _NONCE) == (
+        f'<vigil-data-{_NONCE} source="fault">\n\n</vigil-data-{_NONCE}>'
+    )
+
+
+def test_fence_replaces_the_nonce_in_the_body_with_a_placeholder() -> None:
+    fenced = fence(f"id {_NONCE.upper()} end", "fault", _NONCE)
+    assert "\nid [nonce] end\n" in fenced
+
+
+@pytest.mark.parametrize("value", [["a", "b"], 3, None, True])
+def test_fence_value_dumps_non_string_values_as_json(value: object) -> None:
+    body = fence_value(value, "tool:get_logs", _NONCE).split("\n")[1]
+    assert json.loads(body) == value
+
+
 def test_new_nonce_is_twelve_hex_and_fresh() -> None:
     assert re.fullmatch(r"[0-9a-f]{12}", new_nonce())
     assert new_nonce() != new_nonce()
