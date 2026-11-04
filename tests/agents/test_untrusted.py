@@ -138,6 +138,13 @@ async def test_listed_tool_return_is_fenced() -> None:
     )
 
 
+async def test_call_reaches_the_wrapped_toolset_unchanged() -> None:
+    wrapped = AsyncMock()
+    args, ctx, tool = {"pod": "web-0"}, MagicMock(), MagicMock()
+    await _toolset(wrapped).call_tool("get_logs", args, ctx, tool)
+    wrapped.call_tool.assert_awaited_once_with("get_logs", args, ctx, tool)
+
+
 async def test_listed_tool_dict_return_is_fenced_as_json() -> None:
     value = {"a": 1, "b": "x"}
     wrapped = AsyncMock()
