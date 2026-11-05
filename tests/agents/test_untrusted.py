@@ -527,7 +527,9 @@ async def _remediate(
 
     def model_fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         if pending:
-            return ModelResponse(parts=[ToolCallPart(pending.pop(0), {})])
+            return ModelResponse(
+                parts=[ToolCallPart(pending.pop(0), {"host": "vigil-worker-1"})]
+            )
         return ModelResponse(
             parts=[ToolCallPart(info.output_tools[0].name, _STUB_RESULT)]
         )

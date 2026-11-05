@@ -26,6 +26,7 @@ from common.toolset_guards import (
     CallBudgetToolset,
     CircuitBreakerToolset,
     CircuitBreakerTripped,
+    StageRecordingToolset,
 )
 from common.untrusted import UNTRUSTED_DATA_RULE, FencingToolset, fence_value, new_nonce
 from diagnosis.models import DiagnosisReport
@@ -238,6 +239,7 @@ async def run_remediation(
     agent_branch: str = "",
     breaker: Breaker | None = None,
     require_human_review: bool = False,
+    staged_hosts: list[str] | None = None,
 ) -> tuple[RemediationResult, RunUsage, list[ModelMessage]]:
     refusal = _preflight_refusal(report, source_branch)
     if refusal is not None:
@@ -252,9 +254,12 @@ async def run_remediation(
         ),
         filter_func=lambda _ctx, td: td.name not in _ORCHESTRATOR_OWNED_GIT_TOOLS,
     )
-    nixos_toolset = FilteredToolset(
-        deps.nixos_mcp,
-        filter_func=lambda _ctx, td: td.name not in _ORCHESTRATOR_OWNED_NIXOS_TOOLS,
+    nixos_toolset = StageRecordingToolset(
+        wrapped=FilteredToolset(
+            deps.nixos_mcp,
+            filter_func=lambda _ctx, td: td.name not in _ORCHESTRATOR_OWNED_NIXOS_TOOLS,
+        ),
+        staged_hosts=staged_hosts if staged_hosts is not None else [],
     )
 
     nonce = new_nonce()

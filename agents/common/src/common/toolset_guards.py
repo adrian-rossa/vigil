@@ -16,6 +16,8 @@ from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.toolsets.abstract import ToolsetTool
 from pydantic_ai.toolsets.wrapper import WrapperToolset
 
+STAGE_TOOL_NAME = "stage_generation"
+
 
 class CircuitBreakerTripped(Exception):
     """Raised when consecutive failed MCP tool calls reach the breaker threshold.
@@ -175,4 +177,27 @@ class CircuitBreakerToolset(WrapperToolset[AgentDepsT]):
             self.breaker.error()
             raise
         self.breaker.success()
+        return result
+
+
+@dataclass
+class StageRecordingToolset(WrapperToolset[AgentDepsT]):
+    """Appends the host of every stage_generation call that returned.
+
+    A call that raises records nothing. The list is owned by the caller and
+    shared across the dataclass copies produced per step.
+    """
+
+    staged_hosts: list[str]
+
+    async def call_tool(
+        self,
+        name: str,
+        tool_args: dict[str, Any],
+        ctx: RunContext[AgentDepsT],
+        tool: ToolsetTool[AgentDepsT],
+    ) -> Any:
+        result = await self.wrapped.call_tool(name, tool_args, ctx, tool)
+        if name == STAGE_TOOL_NAME:
+            self.staged_hosts.append(tool_args["host"])
         return result
