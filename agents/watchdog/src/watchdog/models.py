@@ -1,5 +1,6 @@
 """Typed contracts for the Watchdog agent."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from common.constants import WATCHDOG_NAMESPACE
@@ -45,6 +46,7 @@ class WatchdogResult(BaseModel):
     degraded: bool
     snapshot: HealthSnapshot | None = None
     reason: str | None = None
+    stages_seen: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,3 +66,4 @@ class WatchdogDeps:
     os_check_kind: str | None = None
     os_check_key: str | None = None
     os_check_expected: str | None = None
+    staged_hosts: Sequence[str] = ()

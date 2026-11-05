@@ -755,3 +755,101 @@ async def test_run_watchdog_os_node_condition_does_not_call_nixos(
 
     assert result.degraded is False
     nixos.direct_call_tool.assert_not_called()
+
+
+def _os_deps_with_stage_on_second_call(
+    staged: list[str],
+) -> tuple[WatchdogDeps, AsyncMock]:
+    calls = 0
+
+    async def _call(name, args):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            staged.append("worker-1")
+        return {"content": "Active: active (running) since Mon"}
+
+    nixos = AsyncMock()
+    nixos.direct_call_tool = AsyncMock(side_effect=_call)
+    deps = WatchdogDeps(
+        kubectl_mcp=AsyncMock(),
+        flux_mcp=AsyncMock(),
+        nixos_mcp=nixos,
+        target_host="worker-1",
+        os_check_kind="systemd",
+        os_check_key="nginx.service",
+        staged_hosts=staged,
+    )
+    return deps, nixos.direct_call_tool
+
+
+async def test_os_stage_during_a_probe_discards_that_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    streak_k = 3
+    readings = streak_k + 2
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(watchdog_agent_mod, "WINDOW_S", 5.0)
+    monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", streak_k)
+    staged: list[str] = []
+    deps, call_tool = _os_deps_with_stage_on_second_call(staged)
+
+    result = await run_watchdog(deps)
+
+    assert result.degraded is False
+    assert result.stages_seen == 1
+    assert call_tool.await_count == readings
+
+
+async def test_k8s_stage_during_a_probe_discards_that_reading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    streak_k = 3
+    readings = streak_k + 2
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(watchdog_agent_mod, "WINDOW_S", 5.0)
+    monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", streak_k)
+    staged: list[str] = []
+    calls = 0
+
+    async def _snapshot(deps: WatchdogDeps) -> HealthSnapshot:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            staged.append("worker-1")
+        return _healthy_workload_snapshot()
+
+    monkeypatch.setattr(watchdog_agent_mod, "capture_health_snapshot", _snapshot)
+    deps = WatchdogDeps(
+        kubectl_mcp=AsyncMock(), flux_mcp=AsyncMock(), staged_hosts=staged
+    )
+
+    result = await run_watchdog(deps)
+
+    assert result.degraded is False
+    assert result.stages_seen == 1
+    assert calls == readings
+
+
+async def test_verdict_without_stages_reports_none_seen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(watchdog_agent_mod, "WINDOW_S", 5.0)
+    monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", 2)
+    nixos = AsyncMock()
+    nixos.direct_call_tool = AsyncMock(
+        return_value={"content": "Active: active (running) since Mon"}
+    )
+    deps = WatchdogDeps(
+        kubectl_mcp=AsyncMock(),
+        flux_mcp=AsyncMock(),
+        nixos_mcp=nixos,
+        target_host="worker-1",
+        os_check_kind="systemd",
+        os_check_key="nginx.service",
+    )
+
+    result = await run_watchdog(deps)
+
+    assert result.stages_seen == 0

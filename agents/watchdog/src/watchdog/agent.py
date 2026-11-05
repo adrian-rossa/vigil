@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from common.constants import WATCHDOG_HEALTHY_STREAK_K
@@ -349,20 +350,50 @@ async def os_target_healthy(deps: WatchdogDeps) -> bool:
         return False
 
 
+class _Streak:
+    """Consecutive healthy readings, restarted whenever a stage call returns."""
+
+    def __init__(self, staged_hosts: Sequence[str]) -> None:
+        self._staged_hosts = staged_hosts
+        self.counted = 0
+        self.length = 0
+
+    def stages_so_far(self) -> int:
+        return len(self._staged_hosts)
+
+    def observe(self, healthy: bool, stages_before: int) -> bool:
+        stages_now = len(self._staged_hosts)
+        if stages_now != self.counted:
+            self.length = 0
+            self.counted = stages_now
+        self.length = (
+            self.length + 1 if healthy and stages_before == self.counted else 0
+        )
+        return self.length >= HEALTHY_STREAK_K
+
+
 async def _run_os_watchdog(deps: WatchdogDeps) -> WatchdogResult:
     """Poll an OS host with the same window/streak rules as the K8s path."""
     loop = asyncio.get_event_loop()
     deadline = loop.time() + WINDOW_S
-    healthy_streak = 0
+    streak = _Streak(deps.staged_hosts)
     while loop.time() < deadline:
-        if await os_target_healthy(deps):
-            healthy_streak += 1
-            if healthy_streak >= HEALTHY_STREAK_K:
-                return WatchdogResult(degraded=False, snapshot=None, reason="healthy")
-        else:
-            healthy_streak = 0
+        stages_before = streak.stages_so_far()
+        healthy = await os_target_healthy(deps)
+        if streak.observe(healthy, stages_before):
+            return WatchdogResult(
+                degraded=False,
+                snapshot=None,
+                reason="healthy",
+                stages_seen=streak.counted,
+            )
         await asyncio.sleep(POLL_INTERVAL_S)
-    return WatchdogResult(degraded=True, snapshot=None, reason="deadline_reached")
+    return WatchdogResult(
+        degraded=True,
+        snapshot=None,
+        reason="deadline_reached",
+        stages_seen=streak.counted,
+    )
 
 
 async def run_watchdog(deps: WatchdogDeps) -> WatchdogResult:
@@ -376,7 +407,8 @@ async def run_watchdog(deps: WatchdogDeps) -> WatchdogResult:
     (HealthSnapshotUnavailable) skips that poll rather than fabricating a result.
     OS host targets (target_host set, target_kind None) verify the declared
     NixOS state via nixos-mcp instead. No rollback action is taken here -- the
-    Orchestrator decides.
+    Orchestrator decides. A reading counts only if no stage call returned since
+    the streak began, including during that reading.
     """
     if deps.target_host and deps.target_kind is None:
         return await _run_os_watchdog(deps)
@@ -384,8 +416,9 @@ async def run_watchdog(deps: WatchdogDeps) -> WatchdogResult:
     loop = asyncio.get_event_loop()
     deadline = loop.time() + WINDOW_S
     last_snapshot: HealthSnapshot | None = None
-    healthy_streak = 0
+    streak = _Streak(deps.staged_hosts)
     while loop.time() < deadline:
+        stages_before = streak.stages_so_far()
         try:
             snapshot = await capture_health_snapshot(deps)
         except HealthSnapshotUnavailable as exc:
@@ -398,16 +431,20 @@ async def run_watchdog(deps: WatchdogDeps) -> WatchdogResult:
                 degraded=True,
                 snapshot=snapshot,
                 reason="progress_deadline_exceeded",
+                stages_seen=streak.counted,
             )
-        if is_workload_healthy(snapshot, deps.expected_revision):
-            healthy_streak += 1
-            if healthy_streak >= HEALTHY_STREAK_K:
-                return WatchdogResult(
-                    degraded=False, snapshot=snapshot, reason="healthy"
-                )
-        else:
-            healthy_streak = 0
+        healthy = is_workload_healthy(snapshot, deps.expected_revision)
+        if streak.observe(healthy, stages_before):
+            return WatchdogResult(
+                degraded=False,
+                snapshot=snapshot,
+                reason="healthy",
+                stages_seen=streak.counted,
+            )
         await asyncio.sleep(POLL_INTERVAL_S)
     return WatchdogResult(
-        degraded=True, snapshot=last_snapshot, reason="deadline_reached"
+        degraded=True,
+        snapshot=last_snapshot,
+        reason="deadline_reached",
+        stages_seen=streak.counted,
     )
