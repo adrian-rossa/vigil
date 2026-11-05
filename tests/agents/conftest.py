@@ -57,6 +57,33 @@ def sample_fault_event() -> FaultEvent:
 
 
 @pytest.fixture
+def systemd_event() -> FaultEvent:
+    return FaultEvent(
+        receiver="vigil-webhook",
+        status="firing",
+        alerts=[
+            {
+                "status": "firing",
+                "labels": {
+                    "alertname": "NodeSystemdUnitFailed",
+                    "node": "worker-1",
+                    "systemd_unit": "k3s.service",
+                },
+                "annotations": {"summary": "unit down"},
+                "startsAt": "2026-04-18T10:00:00Z",
+                "endsAt": "0001-01-01T00:00:00Z",
+            }
+        ],
+        groupLabels={"alertname": "NodeSystemdUnitFailed"},
+        commonLabels={"node": "worker-1"},
+        commonAnnotations={"summary": "unit down"},
+        externalURL="http://alertmanager.monitoring:9093",
+        version="4",
+        groupKey='{}:{alertname="NodeSystemdUnitFailed"}',
+    )
+
+
+@pytest.fixture
 def mock_kubectl_mcp() -> AsyncMock:
     m = AsyncMock()
     m.call_tool = AsyncMock(

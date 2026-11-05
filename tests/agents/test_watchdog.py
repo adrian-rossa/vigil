@@ -478,6 +478,27 @@ async def test_run_watchdog_os_systemd_inactive_degrades(
     assert result.reason == "deadline_reached"
 
 
+async def test_run_watchdog_os_without_a_check_degrades_and_reads_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(watchdog_agent_mod, "WINDOW_S", 0.2)
+
+    nixos = AsyncMock()
+    deps = WatchdogDeps(
+        kubectl_mcp=AsyncMock(),
+        flux_mcp=AsyncMock(),
+        nixos_mcp=nixos,
+        target_host="worker-1",
+    )
+
+    result = await run_watchdog(deps)
+
+    assert result.degraded is True
+    assert result.reason == "deadline_reached"
+    nixos.direct_call_tool.assert_not_called()
+
+
 async def test_run_watchdog_os_sysctl_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

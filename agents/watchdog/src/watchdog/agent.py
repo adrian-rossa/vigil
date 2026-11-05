@@ -304,9 +304,9 @@ async def probe_os_target(deps: WatchdogDeps) -> bool:
 
     systemd targets are healthy when the unit reports Active: active (running);
     sysctl targets when the live value equals os_check_expected; node-condition
-    targets when describe_node reports os_check_key at os_check_expected; absent
-    a specific check, a host is healthy when it has at least one generation.
-    A failed read raises.
+    targets when describe_node reports os_check_key at os_check_expected. A
+    target with no resolved check is indeterminate and raises, as does a failed
+    read.
     """
     if not deps.target_host:
         return False
@@ -317,26 +317,27 @@ async def probe_os_target(deps: WatchdogDeps) -> bool:
         return _node_condition_satisfied(
             _coerce_tool_text(result), deps.os_check_key, deps.os_check_expected
         )
+    has_keyed_check = deps.os_check_kind in (
+        OS_CHECK_SYSTEMD,
+        OS_CHECK_SYSCTL,
+    ) and bool(deps.os_check_key)
+    if not has_keyed_check:
+        raise HealthSnapshotUnavailable("no resolvable os check")
     if deps.nixos_mcp is None:
         return False
-    if deps.os_check_kind == OS_CHECK_SYSTEMD and deps.os_check_key:
+    if deps.os_check_kind == OS_CHECK_SYSTEMD:
         result = await call_tool(
             deps.nixos_mcp,
             "get_systemd_status",
             {"host": deps.target_host, "unit": deps.os_check_key},
         )
         return _ACTIVE_RUNNING in _coerce_tool_text(result)
-    if deps.os_check_kind == OS_CHECK_SYSCTL and deps.os_check_key:
-        result = await call_tool(
-            deps.nixos_mcp,
-            "get_sysctl",
-            {"host": deps.target_host, "key": deps.os_check_key},
-        )
-        return _parse_sysctl_value(_coerce_tool_text(result)) == deps.os_check_expected
     result = await call_tool(
-        deps.nixos_mcp, "get_generations", {"host": deps.target_host}
+        deps.nixos_mcp,
+        "get_sysctl",
+        {"host": deps.target_host, "key": deps.os_check_key},
     )
-    return bool(_coerce_tool_text(result).strip())
+    return _parse_sysctl_value(_coerce_tool_text(result)) == deps.os_check_expected
 
 
 async def os_target_healthy(deps: WatchdogDeps) -> bool:

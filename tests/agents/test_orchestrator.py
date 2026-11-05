@@ -3954,10 +3954,7 @@ async def test_nix_rollback_succeeds_when_the_reconciler_applies_the_revert(
 
     nixos_calls = _tool_calls(servers.nixos)
     assert nixos_calls.count(("trigger_reconcile", {"host": _WORKER_HOST})) == 2
-    assert nixos_calls[-2:] == [
-        ("get_reconciled_revision", {"host": _WORKER_HOST}),
-        ("get_generations", {"host": _WORKER_HOST}),
-    ]
+    assert nixos_calls[-1] == ("get_reconciled_revision", {"host": _WORKER_HOST})
     assert "reconcile_kustomization" not in events
     assert record.outcome == "rollback_succeeded"
     assert record.retry_queued is False
@@ -4480,7 +4477,7 @@ async def test_unreadable_target_ends_the_incident(
 
 
 async def test_unreadable_os_target_ends_the_incident(
-    sample_fault_event: FaultEvent,
+    systemd_event: FaultEvent,
     servers: SimpleNamespace,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4491,20 +4488,31 @@ async def test_unreadable_os_target_ends_the_incident(
     reconciler = servers.nixos.direct_call_tool
 
     async def nixos_tool(tool: str, args: dict) -> object:
-        if tool == "get_generations":
+        if tool == "get_systemd_status":
             raise RuntimeError("host unreachable")
         return await reconciler(tool, args)
 
     servers.nixos.direct_call_tool = AsyncMock(side_effect=nixos_tool)
 
-    record = await asyncio.wait_for(
-        _orchestrate(sample_fault_event, servers), _TEST_WAIT_S
-    )
+    record = await asyncio.wait_for(_orchestrate(systemd_event, servers), _TEST_WAIT_S)
 
-    assert _tool_names(servers.nixos)[-1] == "get_generations"
+    assert _tool_names(servers.nixos)[-1] == "get_systemd_status"
     assert record.rollback_success is True
     assert record.retry_queued is False
     assert not orch_mod._ACTIVE_RUNS
+
+
+async def test_os_target_without_a_check_ends_the_incident() -> None:
+    nixos = AsyncMock()
+    deps = WatchdogDeps(
+        kubectl_mcp=AsyncMock(),
+        flux_mcp=AsyncMock(),
+        nixos_mcp=nixos,
+        target_host=_WORKER_HOST,
+    )
+
+    assert await orch_mod._target_still_degraded(deps) is False
+    nixos.direct_call_tool.assert_not_called()
 
 
 async def test_shutdown_during_the_finaliser_queues_no_try(
