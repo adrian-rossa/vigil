@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-NIXOS_REBUILD_RESET_IDS = ("os-1",)
+NIXOS_REBUILD_RESET_IDS = (
+    "os-1",
+    "os-stale-generation",
+    "os-drift-sysctl",
+    "disk-pressure",
+)
+NIXOS_HOST_RESET_IDS = (*NIXOS_REBUILD_RESET_IDS, "os-1g")
 REPO = Path(__file__).resolve().parents[2]
 SHARED_BRANCH = "chore/eval-cluster-baseline"
 CELL_BRANCH = "eval/123/k8s-1"
@@ -20,12 +26,18 @@ EXECUTABLE = 0o755
 
 def test_os_reset_scripts_call_nixos_rebuild(scenarios_dir: Path) -> None:
     """Reset must pin the committed NixOS generation before the next run."""
+    stop = "systemctl stop rollback-gate.timer"
+    for sid in NIXOS_HOST_RESET_IDS:
+        body = (scenarios_dir / sid / "reset.sh").read_text()
+        assert stop in body, f"{sid}: missing `{stop}`"
+        assert "rollback-gate.timer || true" not in body, sid
     for sid in NIXOS_REBUILD_RESET_IDS:
         reset_sh = scenarios_dir / sid / "reset.sh"
         body = reset_sh.read_text()
         assert "nixos-rebuild switch" in body, (
             f"{reset_sh}: missing `nixos-rebuild switch`"
         )
+        assert body.index(stop) < body.index("nixos-rebuild switch"), sid
 
 
 def test_health_gate_targets_cluster_apps_kustomization() -> None:
@@ -173,6 +185,8 @@ def test_os_scripts_rebuild_the_configured_flake_attribute(scenarios_dir: Path) 
         "os-1/reset.sh",
         "os-stale-generation/inject.sh",
         "os-stale-generation/reset.sh",
+        "os-drift-sysctl/reset.sh",
+        "disk-pressure/reset.sh",
     ):
         body = (scenarios_dir / script).read_text()
         assert "/opt/nixos-config#\\$(cat /etc/vigil/flake-attr)" in body, script

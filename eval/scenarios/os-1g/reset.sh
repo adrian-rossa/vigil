@@ -8,6 +8,9 @@ TARGET_HOST="vigil-worker-1"
 SSH_OPTS=(-i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
 
 ssh "${SSH_OPTS[@]}" "root@${TARGET_HOST}" \
+  "systemctl stop rollback-gate.timer"
+
+ssh "${SSH_OPTS[@]}" "root@${TARGET_HOST}" \
   "systemctl start --no-block vigil-auto-reconcile.service"
 
 sleep 1

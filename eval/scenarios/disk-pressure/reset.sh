@@ -6,6 +6,12 @@ TARGET_HOST="${TARGET_HOST:-vigil-worker-2}"
 SSH_KEY="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
 
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "root@${TARGET_HOST}" \
+  "systemctl stop rollback-gate.timer"
+
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "root@${TARGET_HOST}" \
   "rm -f /var/eval-fill.img || true"
+
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "root@${TARGET_HOST}" \
+  "flock /var/lock/vigil-nixos-rebuild nixos-rebuild switch --flake /opt/nixos-config#\$(cat /etc/vigil/flake-attr)"
 
 echo "reset.sh: disk-pressure seed=${SEED} - node at baseline"
