@@ -10,7 +10,7 @@ func TestValidateCommandAllowsEnumeratedCommands(t *testing.T) {
 		"nix-env -p /nix/var/nix/profiles/system --list-generations",
 		"sudo systemctl start rollback-gate.timer && sudo nix-env --switch-generation 42 -p /nix/var/nix/profiles/system && sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test && sudo systemctl restart systemd-sysctl",
 		"sudo systemctl restart systemd-sysctl",
-		"sudo /nix/var/nix/profiles/system/bin/switch-to-configuration boot && sudo systemctl stop rollback-gate.timer",
+		commitGenerationCommand,
 		"sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test",
 		"sudo /nix/var/nix/profiles/system/bin/switch-to-configuration boot",
 		"sudo systemctl stop rollback-gate.timer",

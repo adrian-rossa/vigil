@@ -204,6 +204,8 @@ func (c *realNixOSClient) GetGenerations(ctx context.Context, host string) (stri
 	return c.runSSH(ctx, host, "nix-env -p /nix/var/nix/profiles/system --list-generations")
 }
 
+const commitGenerationCommand = "sudo systemctl is-active rollback-gate.timer && sudo nix-env -p /nix/var/nix/profiles/system --set /run/current-system && sudo /run/current-system/bin/switch-to-configuration boot && sudo systemctl stop rollback-gate.timer"
+
 func stageGenerationCommand(generation int) string {
 	return fmt.Sprintf(
 		"sudo systemctl start rollback-gate.timer && sudo nix-env --switch-generation %d -p /nix/var/nix/profiles/system && sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test && sudo systemctl restart systemd-sysctl",
@@ -216,8 +218,7 @@ func (c *realNixOSClient) StageGeneration(ctx context.Context, host string, gene
 }
 
 func (c *realNixOSClient) CommitGeneration(ctx context.Context, host string) (string, error) {
-	cmd := "sudo /nix/var/nix/profiles/system/bin/switch-to-configuration boot && sudo systemctl stop rollback-gate.timer"
-	return c.runSSH(ctx, host, cmd)
+	return c.runSSH(ctx, host, commitGenerationCommand)
 }
 
 func (c *realNixOSClient) RebuildTest(ctx context.Context, host string) (string, error) {

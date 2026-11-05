@@ -38,7 +38,7 @@ func NewServer(client nixos.NixOSClient, cfg *config.Config) *server.MCPServer {
 
 	s.AddTool(
 		mcp.NewTool("commit_generation",
-			mcp.WithDescription("Commit the staged NixOS generation to the bootloader and disarm the rollback gate"),
+			mcp.WithDescription("Make the running NixOS system the boot default while the rollback timer is armed, then disarm the timer"),
 			mcp.WithString("host", mcp.Required(), mcp.Description("Target hostname or IP")),
 			mcp.WithOutputSchema[TextResult](),
 		),
