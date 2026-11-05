@@ -9,7 +9,7 @@ import re
 import subprocess
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -173,6 +173,7 @@ class _RunState:
     prior_tries: tuple[str, ...] = ()
     report: DiagnosisReport | None = None
     commit_shas: tuple[str, ...] = ()
+    staged_hosts: list[str] = field(default_factory=list)
 
     def end_gate(self, gate_status: str, sha: str | None) -> tuple[str, str | None]:
         self.gate_status = gate_status
@@ -468,19 +469,43 @@ async def _rollback(
 
 async def _commit_nixos_generation(
     nixos_mcp: MCPServerStdio,
-    target_host: str | None,
+    run: _RunState,
+    probed_host: str | None,
 ) -> bool:
-    """Durably promote the staged generation, disarming the rollback timer.
+    """Make the probed host's running system durable, disarming the rollback timer.
 
-    Called only after the Watchdog confirms health. Returns True on success;
-    on failure the staged generation stays uncommitted, so the armed timer
-    reverts the host by construction.
+    Commits only when every stage of the run targeted the probed host and the
+    Watchdog verdict counted readings taken after all of them. Returns True on
+    success and False, without a call, when the verdict does not cover the stages.
     """
+    verdict = run.verdict
+    if probed_host is None:
+        reason = "no probed host"
+    elif not run.staged_hosts:
+        reason = "no stage returned"
+    elif any(host != probed_host for host in run.staged_hosts):
+        reason = f"stages on {run.staged_hosts}"
+    elif verdict is None:
+        reason = "no verdict"
+    elif verdict.stages_seen != len(run.staged_hosts):
+        reason = (
+            f"verdict covers {verdict.stages_seen} of {len(run.staged_hosts)} stages"
+        )
+    else:
+        reason = None
+    if reason is not None:
+        log.warning(
+            "run %s: commit_generation skipped for host=%s: %s",
+            run.run_id,
+            probed_host,
+            reason,
+        )
+        return False
     try:
-        await call_tool(nixos_mcp, "commit_generation", {"host": target_host})
+        await call_tool(nixos_mcp, "commit_generation", {"host": probed_host})
         return True
     except Exception:
-        log.exception("commit_generation failed for host=%s", target_host)
+        log.exception("commit_generation failed for host=%s", probed_host)
         return False
 
 
@@ -868,6 +893,7 @@ async def _dispatch_remediation_and_watchdog(
             os_check_key=os_check_key,
             os_check_expected=os_check_expected,
         )
+    target_deps = replace(target_deps, staged_hosts=run.staged_hosts)
 
     if report.recommended_action in _GIT_COMMIT_ACTIONS:
         run.action = report.recommended_action
@@ -881,6 +907,7 @@ async def _dispatch_remediation_and_watchdog(
                 run_id=run.run_id,
                 agent_branch=agent_branch,
                 breaker=breaker,
+                staged_hosts=run.staged_hosts,
             )
         run.commit_shas = _committed_shas(rem_msgs)
         remediation_result = await _gate_and_reconcile(
@@ -911,6 +938,7 @@ async def _dispatch_remediation_and_watchdog(
                             run_id=run.run_id,
                             agent_branch=agent_branch,
                             breaker=breaker,
+                            staged_hosts=run.staged_hosts,
                         )
                     )
                     wtch_task = tg.create_task(run_watchdog(target_deps))
@@ -1640,7 +1668,7 @@ async def _run_attempt(
             elif watchdog_result.degraded:
                 outcome = "flux_degraded"
             elif report.recommended_action == "nixos_rebuild" and not (
-                await _commit_nixos_generation(nixos_mcp, report.target_host)
+                await _commit_nixos_generation(nixos_mcp, run, report.target_host)
             ):
                 outcome = _COMMIT_GENERATION_FAILED_OUTCOME
             else:

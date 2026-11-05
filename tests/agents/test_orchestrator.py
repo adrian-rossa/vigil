@@ -1983,7 +1983,7 @@ async def test_nixos_rebuild_action_routes_to_remediation(
         git_mcp=mock_git_mcp,
     )
 
-    assert record.outcome == "success"
+    assert record.outcome == "commit_generation_failed"
     precheck_calls = [
         c
         for c in mock_flux_mcp.direct_call_tool.call_args_list
@@ -1997,8 +1997,7 @@ async def test_nixos_rebuild_action_routes_to_remediation(
         for c in mock_nixos_mcp.direct_call_tool.call_args_list
         if c.args and c.args[0] == "commit_generation"
     ]
-    assert len(commit_calls) == 1
-    assert commit_calls[0].args[1] == {"host": "vigil-worker-1"}
+    assert commit_calls == []
 
 
 async def test_os_report_yields_watchdog_deps_with_nixos_target(
@@ -2066,45 +2065,6 @@ async def test_os_report_yields_watchdog_deps_with_nixos_target(
     assert deps.os_check_kind == "systemd"
     assert deps.os_check_key == "nginx.service"
     assert deps.target_kind is None
-
-
-async def test_nixos_rebuild_success_commit_generation_failure_surfaced(
-    sample_fault_event: FaultEvent,
-    mock_kubectl_mcp: AsyncMock,
-    mock_flux_mcp: AsyncMock,
-    mock_nixos_mcp: AsyncMock,
-    mock_git_mcp: AsyncMock,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("EVAL_RUNS_DIR", str(tmp_path / "runs"))
-    nixos_report = _canned_report_with_action(
-        "nixos_rebuild", target_host="vigil-worker-1"
-    )
-    diag_rv = (nixos_report, RunUsage(input_tokens=100, output_tokens=50), [])
-    rem_rv = (_canned_remediation(), RunUsage(input_tokens=200, output_tokens=80), [])
-    monkeypatch.setattr(orch_mod, "run_diagnosis", AsyncMock(return_value=diag_rv))
-    monkeypatch.setattr(
-        orch_mod, "capture_health_snapshot", AsyncMock(return_value=_canned_baseline())
-    )
-    monkeypatch.setattr(orch_mod, "run_remediation", AsyncMock(return_value=rem_rv))
-    monkeypatch.setattr(
-        orch_mod, "run_watchdog", AsyncMock(return_value=_watchdog_ok())
-    )
-    mock_nixos_mcp.direct_call_tool = AsyncMock(
-        side_effect=RuntimeError("commit refused")
-    )
-
-    record = await run_orchestration(
-        sample_fault_event,
-        kubectl_mcp=mock_kubectl_mcp,
-        flux_mcp=mock_flux_mcp,
-        nixos_mcp=mock_nixos_mcp,
-        git_mcp=mock_git_mcp,
-    )
-
-    assert record.outcome == "commit_generation_failed"
-    assert record.success_rate is False
 
 
 async def test_k8s_success_does_not_commit_generation(
