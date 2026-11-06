@@ -5,3 +5,4 @@ resources:
   - fault-injection-clusterrole.yaml
   - serviceaccounts.yaml
   - clusterrolebindings.yaml
+  - eval-runner-node-lease.yaml

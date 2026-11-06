@@ -51,3 +51,35 @@ def test_eval_runner_clusterrole_grants_all_context_prefetch_verbs() -> None:
         "eval-runner ClusterRole missing verbs for context pre-fetch: "
         f"{sorted(missing)}"
     )
+
+
+_NODE_LEASE_PATH = (
+    Path(__file__).parents[2] / "infra/kubernetes/rbac/eval-runner-node-lease.yaml"
+)
+_KUSTOMIZATION_PATH = (
+    Path(__file__).parents[2] / "infra/kubernetes/rbac/kustomization.yaml"
+)
+_NODE_LEASE_NAMESPACE = "kube-node-lease"
+
+
+def test_eval_runner_may_get_node_leases_only_in_kube_node_lease() -> None:
+    docs = {d["kind"]: d for d in yaml.safe_load_all(_NODE_LEASE_PATH.read_text())}
+    role = docs["Role"]
+    assert role["metadata"]["namespace"] == _NODE_LEASE_NAMESPACE
+    granted = {
+        (group, resource, verb)
+        for rule in role["rules"]
+        for group in rule["apiGroups"]
+        for resource in rule["resources"]
+        for verb in rule["verbs"]
+    }
+    assert granted == {("coordination.k8s.io", "leases", "get")}
+    binding = docs["RoleBinding"]
+    assert binding["metadata"]["namespace"] == _NODE_LEASE_NAMESPACE
+    assert binding["roleRef"]["kind"] == "Role"
+    assert binding["roleRef"]["name"] == role["metadata"]["name"]
+    assert binding["subjects"] == [
+        {"kind": "ServiceAccount", "name": "vigil-eval-runner", "namespace": "default"}
+    ]
+    kustomization = yaml.safe_load(_KUSTOMIZATION_PATH.read_text())
+    assert "eval-runner-node-lease.yaml" in kustomization["resources"]

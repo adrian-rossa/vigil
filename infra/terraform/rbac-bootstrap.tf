@@ -7,6 +7,7 @@ resource "null_resource" "rbac_manifests" {
     fault_injection_clusterrole = filebase64sha256("${path.module}/../kubernetes/rbac/fault-injection-clusterrole.yaml")
     serviceaccounts             = filebase64sha256("${path.module}/../kubernetes/rbac/serviceaccounts.yaml")
     clusterrolebindings         = filebase64sha256("${path.module}/../kubernetes/rbac/clusterrolebindings.yaml")
+    eval_runner_node_lease      = filebase64sha256("${path.module}/../kubernetes/rbac/eval-runner-node-lease.yaml")
   }
 
   provisioner "local-exec" {
