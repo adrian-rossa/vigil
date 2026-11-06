@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -241,5 +243,45 @@ func TestRolloutStatus_NotFound(t *testing.T) {
 	}
 	if ws.Conditions == nil || len(ws.Conditions) != 0 {
 		t.Errorf("expected empty conditions array, got %+v", ws.Conditions)
+	}
+}
+
+func describeNodeFixtures() (*corev1.Node, *coordinationv1.Lease) {
+	renew := metav1.NewMicroTime(time.Date(2026, 11, 6, 10, 9, 38, 936388000, time.UTC))
+	duration := int32(40)
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "vigil-worker-2"}}
+	lease := &coordinationv1.Lease{
+		ObjectMeta: metav1.ObjectMeta{Name: "vigil-worker-2", Namespace: "kube-node-lease"},
+		Spec:       coordinationv1.LeaseSpec{RenewTime: &renew, LeaseDurationSeconds: &duration},
+	}
+	return node, lease
+}
+
+func TestDescribeNodeReportsTheLeaseRenewTimeAndDuration(t *testing.T) {
+	node, lease := describeNodeFixtures()
+	c := &realK8sClient{cs: kubefake.NewSimpleClientset(node, lease)}
+	out, err := c.DescribeNode(context.Background(), "vigil-worker-2")
+	if err != nil {
+		t.Fatalf("DescribeNode: %v", err)
+	}
+	for _, want := range []string{"LeaseRenewTime: 2026-11-06T10:09:38.936388Z\n", "LeaseDurationSeconds: 40\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestDescribeNodeMarksAMissingLeaseUnavailable(t *testing.T) {
+	node, _ := describeNodeFixtures()
+	c := &realK8sClient{cs: kubefake.NewSimpleClientset(node)}
+	out, err := c.DescribeNode(context.Background(), "vigil-worker-2")
+	if err != nil {
+		t.Fatalf("DescribeNode: %v", err)
+	}
+	if !strings.Contains(out, "LeaseRenewTime: unavailable\n") {
+		t.Errorf("output missing unavailable marker:\n%s", out)
+	}
+	if strings.Contains(out, "LeaseDurationSeconds") {
+		t.Errorf("unexpected duration line:\n%s", out)
 	}
 }

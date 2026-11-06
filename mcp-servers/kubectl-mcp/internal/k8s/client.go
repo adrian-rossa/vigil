@@ -24,7 +24,11 @@ import (
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
-const eventsDelimiter = "\nEvents:"
+const (
+	eventsDelimiter    = "\nEvents:"
+	nodeLeaseNamespace = "kube-node-lease"
+	leaseTimeLayout    = "2006-01-02T15:04:05.000000Z07:00"
+)
 
 type K8sClient interface {
 	GetNodes(ctx context.Context) (string, error)
@@ -214,6 +218,15 @@ func (c *realK8sClient) DescribeNode(ctx context.Context, name string) (string, 
 		fmt.Fprintf(&sb, "  %s: %s\n", string(res), qty.String())
 	}
 	fmt.Fprintf(&sb, "KubeletVersion: %s\n", node.Status.NodeInfo.KubeletVersion)
+	lease, err := c.cs.CoordinationV1().Leases(nodeLeaseNamespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil || lease.Spec.RenewTime == nil {
+		sb.WriteString("LeaseRenewTime: unavailable\n")
+		return sb.String(), nil
+	}
+	fmt.Fprintf(&sb, "LeaseRenewTime: %s\n", lease.Spec.RenewTime.UTC().Format(leaseTimeLayout))
+	if lease.Spec.LeaseDurationSeconds != nil {
+		fmt.Fprintf(&sb, "LeaseDurationSeconds: %d\n", *lease.Spec.LeaseDurationSeconds)
+	}
 	return sb.String(), nil
 }
 
