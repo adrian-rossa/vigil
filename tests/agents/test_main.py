@@ -233,9 +233,11 @@ def _attempt_s() -> float:
     return (
         main_mod.DIAGNOSIS_TIMEOUT_S
         + main_mod.REMEDIATION_TIMEOUT_S
-        + GIT_MCP_READ_TIMEOUT_S
         + 2 * MCP_CALL_TIMEOUT_S
-        + main_mod.WATCHDOG_WINDOW_S
+        + max(
+            GIT_MCP_READ_TIMEOUT_S + main_mod.WATCHDOG_WINDOW_S,
+            main_mod.ROLLBACK_VERIFY_WINDOW_S,
+        )
     )
 
 
@@ -248,6 +250,21 @@ def test_gate_wait_budget_check_fits_one_attempt_in_the_run_deadline(
     monkeypatch.setattr(main_mod, "ORCHESTRATOR_RUN_TIMEOUT_S", _attempt_s())
     with pytest.raises(
         ValueError, match="WATCHDOG_WINDOW_S.*ORCHESTRATOR_RUN_TIMEOUT_S"
+    ):
+        main_mod._check_gate_wait_budget()
+
+
+def test_attempt_budget_covers_the_stage_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        main_mod,
+        "ROLLBACK_VERIFY_WINDOW_S",
+        GIT_MCP_READ_TIMEOUT_S + main_mod.WATCHDOG_WINDOW_S + 1,
+    )
+    monkeypatch.setattr(main_mod, "ORCHESTRATOR_RUN_TIMEOUT_S", _attempt_s())
+    with pytest.raises(
+        ValueError, match="ROLLBACK_VERIFY_WINDOW_S.*ORCHESTRATOR_RUN_TIMEOUT_S"
     ):
         main_mod._check_gate_wait_budget()
 

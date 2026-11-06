@@ -62,6 +62,7 @@ from remediation.models import (
     RemediationOutputRetryExhausted,
     RemediationResult,
 )
+from watchdog import agent as watchdog_agent
 from watchdog.agent import (
     OS_CHECK_NODE_CONDITION,
     OS_CHECK_SYSCTL,
@@ -91,6 +92,14 @@ _REMEDIATION_BRANCH_PREFIX = "remediation/run-"
 _GIT_COMMIT_ACTIONS: frozenset[str] = frozenset({"git_commit_k8s", "git_commit_nix"})
 
 _COMMIT_GENERATION_FAILED_OUTCOME = "commit_generation_failed"
+_STAGE_WINDOW_ELAPSED_REASON = "stage_window_elapsed"
+_REMEDIATION_ABORTS = (
+    TimeoutError,
+    UsageLimitExceeded,
+    UnexpectedModelBehavior,
+    RemediationOutputRetryExhausted,
+    CircuitBreakerTripped,
+)
 
 _FLUX_APPS = {"namespace": "flux-system", "name": "cluster-apps"}
 
@@ -487,6 +496,17 @@ def _commit_skip_reason(
     return None
 
 
+def _log_commit_skip(
+    run: _RunState, probed_host: str | None, reason: str | None
+) -> None:
+    log.warning(
+        "run %s: commit_generation skipped for host=%s: %s",
+        run.run_id,
+        probed_host,
+        reason,
+    )
+
+
 async def _commit_nixos_generation(
     nixos_mcp: MCPServerStdio,
     run: _RunState,
@@ -503,12 +523,7 @@ async def _commit_nixos_generation(
     async with run.stage_lock:
         reason = _commit_skip_reason(run, probed_host, verdict)
         if reason is not None:
-            log.warning(
-                "run %s: commit_generation skipped for host=%s: %s",
-                run.run_id,
-                probed_host,
-                reason,
-            )
+            _log_commit_skip(run, probed_host, reason)
             return False
         run.commit_attempted_stages = len(run.staged_hosts)
         try:
@@ -518,6 +533,69 @@ async def _commit_nixos_generation(
             return False
         run.committed_stages = len(run.staged_hosts)
         return True
+
+
+async def _watch_stages(
+    target_deps: WatchdogDeps,
+    run: _RunState,
+    nixos_mcp: MCPServerStdio,
+    remediation_done: asyncio.Event,
+    *,
+    commits: bool,
+) -> WatchdogResult:
+    """A live stage is bounded by its timer window, never by when remediation ends."""
+    loop = asyncio.get_running_loop()
+    seen, window_end = 0, 0.0
+    verdict = tried = None
+    watch: asyncio.Task[WatchdogResult] | None = asyncio.create_task(
+        run_watchdog(target_deps)
+    )
+    done_wait = asyncio.create_task(remediation_done.wait())
+    try:
+        while True:
+            staged = len(run.staged_hosts)
+            if staged > seen:
+                seen, window_end = staged, loop.time() + ROLLBACK_VERIFY_WINDOW_S
+            window_open = loop.time() < window_end
+            if watch is not None and watch.done():
+                verdict, watch = watch.result(), None
+            elif watch is not None and staged and not window_open:
+                watch.cancel()
+                watch = None
+                verdict = WatchdogResult(
+                    degraded=True,
+                    reason=_STAGE_WINDOW_ELAPSED_REASON,
+                    stages_seen=staged,
+                )
+            if watch is None and verdict is not None:
+                confirmed = (
+                    staged > 0
+                    and not verdict.degraded
+                    and verdict.stages_seen == staged
+                )
+                if commits and confirmed and verdict is not tried:
+                    tried = verdict
+                    await _commit_nixos_generation(
+                        nixos_mcp, run, target_deps.target_host, verdict
+                    )
+                    if len(run.staged_hosts) != staged:
+                        continue
+                if staged and not confirmed and window_open:
+                    watch = asyncio.create_task(run_watchdog(target_deps))
+                elif remediation_done.is_set():
+                    return verdict
+            timeout = watchdog_agent.POLL_INTERVAL_S
+            if window_open:
+                timeout = min(timeout, window_end - loop.time())
+            await asyncio.wait(
+                [task for task in (watch, done_wait) if task and not task.done()],
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+    finally:
+        done_wait.cancel()
+        if watch is not None:
+            watch.cancel()
 
 
 def _created_pr_number(msgs: list[ModelMessage]) -> int | None:
@@ -941,35 +1019,58 @@ async def _dispatch_remediation_and_watchdog(
                     remediation_deps.flux_mcp
                 ),
             )
-        async with asyncio.timeout(REMEDIATION_TIMEOUT_S):
+        remediation_done = asyncio.Event()
+        failures: list[Exception] = []
+
+        async def remediate() -> (
+            tuple[RemediationResult, RunUsage, list[ModelMessage]] | None
+        ):
             try:
-                async with asyncio.TaskGroup() as tg:
-                    rem_task = tg.create_task(
-                        run_remediation(
-                            remediation_deps,
-                            report,
-                            source_branch=base_branch,
-                            model=model,
-                            run_id=run.run_id,
-                            agent_branch=agent_branch,
-                            breaker=breaker,
-                            staged_hosts=run.staged_hosts,
-                            stage_lock=run.stage_lock,
-                        )
+                async with asyncio.timeout(REMEDIATION_TIMEOUT_S):
+                    return await run_remediation(
+                        remediation_deps,
+                        report,
+                        source_branch=base_branch,
+                        model=model,
+                        run_id=run.run_id,
+                        agent_branch=agent_branch,
+                        breaker=breaker,
+                        staged_hosts=run.staged_hosts,
+                        stage_lock=run.stage_lock,
                     )
-                    wtch_task = tg.create_task(run_watchdog(target_deps))
-            except* (
-                UsageLimitExceeded,
-                UnexpectedModelBehavior,
-                RemediationOutputRetryExhausted,
-                CircuitBreakerTripped,
-            ) as eg:
-                raise eg.exceptions[0]
-        remediation_result, rem_usage, rem_msgs = rem_task.result()
+            except Exception as exc:
+                failures.append(exc)
+                if not run.staged_hosts:
+                    raise
+                return None
+            finally:
+                remediation_done.set()
+
+        try:
+            async with asyncio.TaskGroup() as tg:
+                rem_task = tg.create_task(remediate())
+                watch = tg.create_task(
+                    _watch_stages(
+                        target_deps,
+                        run,
+                        remediation_deps.nixos_mcp,
+                        remediation_done,
+                        commits=report.recommended_action == "nixos_rebuild",
+                    )
+                )
+        except BaseExceptionGroup:
+            if failures and isinstance(failures[0], _REMEDIATION_ABORTS):
+                raise failures[0] from None
+            raise
+        outcome = rem_task.result()
+        watchdog_result = watch.result()
+        if outcome is None:
+            run.verdict = watchdog_result
+            raise failures[0]
+        remediation_result, rem_usage, rem_msgs = outcome
         remediation_result = remediation_result.model_copy(
             update={"merge_commit_sha": None, "gate_status": None}
         )
-        watchdog_result = wtch_task.result()
     run.verdict = watchdog_result
     return remediation_result, rem_usage, rem_msgs, watchdog_result
 
@@ -1683,11 +1784,16 @@ async def _run_attempt(
                 outcome = "budget_exhausted"
             elif watchdog_result.degraded:
                 outcome = "flux_degraded"
-            elif report.recommended_action == "nixos_rebuild" and not (
-                await _commit_nixos_generation(
-                    nixos_mcp, run, report.target_host, watchdog_result
-                )
+            elif report.recommended_action == "nixos_rebuild" and (
+                run.committed_stages == 0
+                or run.committed_stages != len(run.staged_hosts)
             ):
+                if run.commit_attempted_stages == 0:
+                    _log_commit_skip(
+                        run,
+                        report.target_host,
+                        _commit_skip_reason(run, report.target_host, watchdog_result),
+                    )
                 outcome = _COMMIT_GENERATION_FAILED_OUTCOME
             else:
                 outcome = "success"

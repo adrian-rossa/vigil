@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock
@@ -140,10 +141,17 @@ class FakeHost(_CannedMCP):
     """One NixOS host whose rollback timer reboots into the boot default."""
 
     def __init__(
-        self, *, good: set[int], drift: bool = False, fail: str | None = None
+        self,
+        *,
+        good: set[int],
+        drift: bool = False,
+        fail: str | None = None,
+        stage_s: float = 0,
     ) -> None:
         super().__init__(_HOST_TOOLS, {})
         self.good, self.drift, self.fail = good, drift, fail
+        self.stage_s = stage_s
+        self.in_flight = 0
         self.profile = self.boot_default = self.running = self.booted = COMMITTED
         self.armed: asyncio.TimerHandle | None = None
         self.down = False
@@ -178,6 +186,11 @@ class FakeHost(_CannedMCP):
         if self.down:
             raise ModelRetry("ssh dial: connection refused")
         if name == STAGE_TOOL_NAME:
+            self.in_flight += 1
+            try:
+                await asyncio.sleep(sim(self.stage_s))
+            finally:
+                self.in_flight -= 1
             if self.armed is None:
                 self.armed = asyncio.get_running_loop().call_later(
                     sim(TIMER_MIN_S), self._reboot
@@ -191,6 +204,8 @@ class FakeHost(_CannedMCP):
                 raise RuntimeError("ssh: connection reset")
             return "stage ok"
         if name == COMMIT_TOOL_NAME:
+            if self.in_flight > 0:
+                raise AssertionError("commit during stage")
             if self.fail == "commit":
                 raise ModelRetry("CommitGeneration: Process exited with status 1")
             if self.armed is None:
@@ -213,6 +228,9 @@ class FakeHost(_CannedMCP):
     def calls(self, name: str) -> list[dict[str, object]]:
         return [args for _, called, args in self.log if called == name]
 
+    def times(self, name: str) -> list[float]:
+        return [at for at, called, _ in self.log if called == name]
+
     def polls_after_stage(self) -> int:
         tools = self.tools()
         last_stage = len(tools) - 1 - tools[::-1].index(STAGE_TOOL_NAME)
@@ -224,6 +242,7 @@ def staging_model(
     *stages: tuple[str, int],
     success: bool = True,
     between: Callable[[], Awaitable[None]] | None = None,
+    answer_after: float = 0,
 ) -> FunctionModel:
     pending = [{"host": host, "generation": generation} for host, generation in stages]
 
@@ -235,6 +254,7 @@ def staging_model(
                 await between()
             args = pending.pop(0)
             return ModelResponse(parts=[ToolCallPart(STAGE_TOOL_NAME, args)])
+        await asyncio.sleep(sim(answer_after))
         output = {
             "success": success,
             "actions_taken": [STAGE_TOOL_NAME] * len(stages),
@@ -251,6 +271,7 @@ def drive(tmp_path, monkeypatch, mock_kubectl_mcp):
     monkeypatch.setenv("EVAL_RUNS_DIR", str(tmp_path / "runs"))
     monkeypatch.setattr(wd_mod, "WINDOW_S", sim(WINDOW_S))
     monkeypatch.setattr(wd_mod, "POLL_INTERVAL_S", sim(POLL_S))
+    monkeypatch.setattr(orch_mod, "ROLLBACK_VERIFY_WINDOW_S", sim(TIMER_MIN_S))
     for module in (orch_mod, wd_mod):
         monkeypatch.setattr(
             module,
@@ -314,7 +335,7 @@ async def test_reboot_healed_fault_keeps_the_prior_generation_durable(
     record = await drive(host, systemd_event, staging_model(10, (HOST, STAGED)))
     assert host.reboots == 1
     assert host.boot_default == COMMITTED
-    assert record.outcome == COMMIT_FAILED
+    assert record.outcome == "flux_degraded"
 
 
 @pytest.mark.parametrize("fail", ["exit_4", "nix_env"])
@@ -347,7 +368,7 @@ async def test_verdict_reached_before_the_stage_never_commits(drive, systemd_eve
     host = FakeHost(good={COMMITTED})
     record = await drive(host, systemd_event, staging_model(60, (HOST, STAGED)))
     assert COMMIT_TOOL_NAME not in host.tools()
-    assert record.outcome == COMMIT_FAILED
+    assert record.outcome == "flux_degraded"
 
 
 async def test_second_stage_restarts_the_streak(drive, systemd_event):
@@ -376,16 +397,15 @@ async def test_commit_requires_every_stage_on_the_probed_host(
     assert record.outcome == COMMIT_FAILED
 
 
-async def test_late_stage_after_the_window_never_commits(drive, systemd_event):
+async def test_stage_after_the_first_watch_window_commits_once_confirmed(
+    drive, systemd_event
+):
     host = FakeHost(good={STAGED})
     record = await drive(
         host, systemd_event, staging_model(WINDOW_S + 20, (HOST, STAGED))
     )
-    assert record.outcome == "flux_degraded"
-    assert record.retry_queued is False
-    assert host.armed is not None
-    await asyncio.sleep(sim(TIMER_MIN_S + 10))
-    assert host.booted == host.boot_default == COMMITTED
+    assert record.outcome == "success"
+    assert host.armed is None
 
 
 async def test_nixos_rebuild_without_a_resolvable_check_never_commits(
@@ -403,3 +423,94 @@ async def test_commit_tool_error_reports_commit_generation_failed(drive, systemd
     record = await drive(host, systemd_event, staging_model(10, (HOST, STAGED)))
     assert record.outcome == COMMIT_FAILED
     assert record.success_rate is False
+
+
+async def test_slow_answer_after_a_confirmed_stage_still_commits(drive, systemd_event):
+    host = FakeHost(good={STAGED})
+    model = staging_model(10, (HOST, STAGED), answer_after=TIMER_MIN_S + 60)
+    record = await drive(host, systemd_event, model)
+    assert record.outcome == "success"
+    assert host.reboots == 0
+    assert host.times(COMMIT_TOOL_NAME)[0] < 10 + TIMER_MIN_S
+
+
+async def test_stage_after_an_early_healthy_verdict_is_committed(drive, systemd_event):
+    host = FakeHost(good={COMMITTED, STAGED})
+    record = await drive(host, systemd_event, staging_model(60, (HOST, STAGED)))
+    assert record.outcome == "success"
+    assert host.times(COMMIT_TOOL_NAME)[0] > host.times(STAGE_TOOL_NAME)[0]
+    assert host.polls_after_stage() >= wd_mod.HEALTHY_STREAK_K
+
+
+async def test_no_commit_while_a_stage_call_is_in_flight(drive, systemd_event):
+    slow_stage_s = 20
+    host = FakeHost(good={STAGED})
+
+    async def slow_second_stage() -> None:
+        await host.next_poll()
+        host.stage_s = slow_stage_s
+
+    model = staging_model(10, (HOST, STAGED), (HOST, STAGED), between=slow_second_stage)
+    record = await drive(host, systemd_event, model)
+    assert record.outcome == "success"
+    assert len(host.calls(COMMIT_TOOL_NAME)) == 1
+    second_stage_returned = host.times(STAGE_TOOL_NAME)[1] + slow_stage_s
+    assert host.times(COMMIT_TOOL_NAME)[0] >= second_stage_returned
+
+
+async def test_abort_after_a_stage_still_commits_once_confirmed(
+    drive, systemd_event, monkeypatch
+):
+    remediation_timeout_s = 60
+    monkeypatch.setattr(orch_mod, "REMEDIATION_TIMEOUT_S", sim(remediation_timeout_s))
+    host = FakeHost(good={STAGED})
+    model = staging_model(50, (HOST, STAGED), answer_after=600)
+    record = await drive(host, systemd_event, model)
+    assert record.outcome == "abort"
+    assert host.times(COMMIT_TOOL_NAME)[0] > remediation_timeout_s
+    assert host.profile == host.boot_default == STAGED
+    assert host.reboots == 0
+
+
+async def test_cancelled_run_leaves_the_stage_to_the_timer(drive, systemd_event):
+    host = FakeHost(good={STAGED})
+    run = asyncio.create_task(
+        drive(host, systemd_event, staging_model(10, (HOST, STAGED)))
+    )
+    while STAGE_TOOL_NAME not in host.tools():
+        await host.next_poll()
+    run.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await run
+    assert COMMIT_TOOL_NAME not in host.tools()
+    await asyncio.sleep(sim(TIMER_MIN_S + 10))
+    assert host.booted == host.boot_default == COMMITTED
+
+
+async def test_stage_cut_by_the_remediation_timeout_is_never_committed(
+    drive, systemd_event, monkeypatch
+):
+    monkeypatch.setattr(orch_mod, "REMEDIATION_TIMEOUT_S", sim(40))
+    host = FakeHost(good={STAGED})
+
+    async def slow_second_stage() -> None:
+        host.stage_s = 100
+
+    model = staging_model(10, (HOST, STAGED), (HOST, STAGED), between=slow_second_stage)
+    record = await drive(host, systemd_event, model)
+    assert record.outcome == "abort"
+    assert COMMIT_TOOL_NAME not in host.tools()
+
+
+async def test_failing_watch_cancels_remediation(drive, systemd_event, monkeypatch):
+    remediation_timeout_s = 600
+    monkeypatch.setattr(orch_mod, "REMEDIATION_TIMEOUT_S", sim(remediation_timeout_s))
+    monkeypatch.setattr(
+        wd_mod, "capture_health_snapshot", AsyncMock(side_effect=TimeoutError())
+    )
+    host = FakeHost(good={STAGED})
+    model = staging_model(0, answer_after=remediation_timeout_s * 2)
+    record = await drive(host, systemd_event, model, target_host=None)
+    assert record.outcome == "abort"
+    assert record.setup_error != "remediation_timeout"
+    assert host.now() < remediation_timeout_s
