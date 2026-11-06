@@ -12,7 +12,6 @@ MCP_CALL_TIMEOUT_S: float = float(os.environ.get("MCP_CALL_TIMEOUT_S", "60"))
 
 GATE_WAIT_TIMEOUT_S: int = int(os.environ.get("GATE_WAIT_TIMEOUT_S", "480"))
 
-# Mirrors the gate wait bounds, finaliser and poll interval compiled into git-mcp.
 GATE_WAIT_TIMEOUT_MIN_S: int = 1
 
 GATE_WAIT_TIMEOUT_MAX_S: int = 3600
@@ -84,7 +83,6 @@ ROLLBACK_TIMEOUT_S: int = 825
 
 SHUTDOWN_DRAIN_S: float = 2 * MCP_CALL_TIMEOUT_S + ROLLBACK_TIMEOUT_S
 
-# Mirrors TimeoutStopSec of the agent unit and the lab agent stop timeout.
 SHUTDOWN_STOP_TIMEOUT_S: int = 1005
 
 SHUTDOWN_STOP_MARGIN_S: int = 60
