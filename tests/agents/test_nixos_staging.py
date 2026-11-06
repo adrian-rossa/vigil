@@ -13,7 +13,11 @@ os.environ.setdefault("OLLAMA_API_KEY", "sk-test")
 
 import orchestrator.agent as orch_mod
 import watchdog.agent as wd_mod
-from common.toolset_guards import STAGE_TOOL_NAME, StageRecordingToolset
+from common.toolset_guards import (
+    STAGE_TOOL_NAME,
+    UNCONFIRMED_STAGE_HOST,
+    StageRecordingToolset,
+)
 from diagnosis.context import DiagnosisContext
 from orchestrator.agent import run_orchestration
 from orchestrator.models import FaultEvent, RunRecord
@@ -59,14 +63,29 @@ async def _call(toolset: StageRecordingToolset, name: str) -> object:
     return await toolset.call_tool(name, _STAGE_ARGS, MagicMock(), MagicMock())
 
 
-async def test_stage_recorder_records_nothing_on_a_transport_error() -> None:
+async def test_stage_recorder_marks_a_transport_error_unconfirmed() -> None:
     wrapped = AsyncMock()
     wrapped.call_tool.side_effect = RuntimeError("ssh: connection reset")
     staged: list[str] = []
     toolset = StageRecordingToolset(wrapped=wrapped, staged_hosts=staged)
     with pytest.raises(RuntimeError, match="connection reset"):
         await _call(toolset, STAGE_TOOL_NAME)
-    assert staged == []
+    assert staged == [UNCONFIRMED_STAGE_HOST]
+
+
+async def test_stage_recorder_waits_for_a_held_stage_lock() -> None:
+    wrapped = AsyncMock()
+    lock = asyncio.Lock()
+    toolset = StageRecordingToolset(wrapped=wrapped, staged_hosts=[], stage_lock=lock)
+    await lock.acquire()
+    call = asyncio.create_task(_call(toolset, STAGE_TOOL_NAME))
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    wrapped.call_tool.assert_not_called()
+    lock.release()
+    await call
+    wrapped.call_tool.assert_awaited_once()
+    assert not lock.locked()
 
 
 async def test_stage_recorder_ignores_other_tools() -> None:

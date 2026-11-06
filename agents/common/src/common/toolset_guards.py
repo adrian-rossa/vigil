@@ -8,6 +8,7 @@ the dataclass copies that WrapperToolset.for_run / for_run_step produce per step
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
@@ -17,6 +18,7 @@ from pydantic_ai.toolsets.abstract import ToolsetTool
 from pydantic_ai.toolsets.wrapper import WrapperToolset
 
 STAGE_TOOL_NAME = "stage_generation"
+UNCONFIRMED_STAGE_HOST = "<unconfirmed stage>"
 
 
 class CircuitBreakerTripped(Exception):
@@ -184,11 +186,15 @@ class CircuitBreakerToolset(WrapperToolset[AgentDepsT]):
 class StageRecordingToolset(WrapperToolset[AgentDepsT]):
     """Appends the host of every stage_generation call that returned.
 
-    A call that raises records nothing. The list is owned by the caller and
-    shared across the dataclass copies produced per step.
+    A call that raises ModelRetry records nothing. A call ended by any other
+    exception or by cancellation may still have switched the host, so it records
+    UNCONFIRMED_STAGE_HOST, which matches no probed host and blocks a commit. The
+    list is owned by the caller and shared across the dataclass copies produced
+    per step. The stage lock is held for the whole stage_generation call.
     """
 
     staged_hosts: list[str]
+    stage_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def call_tool(
         self,
@@ -197,7 +203,15 @@ class StageRecordingToolset(WrapperToolset[AgentDepsT]):
         ctx: RunContext[AgentDepsT],
         tool: ToolsetTool[AgentDepsT],
     ) -> Any:
-        result = await self.wrapped.call_tool(name, tool_args, ctx, tool)
-        if name == STAGE_TOOL_NAME:
+        if name != STAGE_TOOL_NAME:
+            return await self.wrapped.call_tool(name, tool_args, ctx, tool)
+        async with self.stage_lock:
+            try:
+                result = await self.wrapped.call_tool(name, tool_args, ctx, tool)
+            except ModelRetry:
+                raise
+            except BaseException:
+                self.staged_hosts.append(UNCONFIRMED_STAGE_HOST)
+                raise
             self.staged_hosts.append(tool_args["host"])
         return result

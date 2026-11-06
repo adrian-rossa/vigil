@@ -175,6 +175,9 @@ class _RunState:
     report: DiagnosisReport | None = None
     commit_shas: tuple[str, ...] = ()
     staged_hosts: list[str] = field(default_factory=list)
+    stage_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    committed_stages: int = 0
+    commit_attempted_stages: int = 0
 
     def end_gate(self, gate_status: str, sha: str | None) -> tuple[str, str | None]:
         self.gate_status = gate_status
@@ -468,46 +471,53 @@ async def _rollback(
     return await _poll_until(at_revert)
 
 
+def _commit_skip_reason(
+    run: _RunState, probed_host: str | None, verdict: WatchdogResult | None
+) -> str | None:
+    if probed_host is None:
+        return "no probed host"
+    if not run.staged_hosts:
+        return "no stage returned"
+    if any(host != probed_host for host in run.staged_hosts):
+        return f"stages on {run.staged_hosts}"
+    if verdict is None:
+        return "no verdict"
+    if verdict.stages_seen != len(run.staged_hosts):
+        return f"verdict covers {verdict.stages_seen} of {len(run.staged_hosts)} stages"
+    return None
+
+
 async def _commit_nixos_generation(
     nixos_mcp: MCPServerStdio,
     run: _RunState,
     probed_host: str | None,
+    verdict: WatchdogResult,
 ) -> bool:
     """Make the probed host's running system durable, disarming the rollback timer.
 
     Commits only when every stage of the run targeted the probed host and the
-    Watchdog verdict counted readings taken after all of them. Returns True on
-    success and False, without a call, when the verdict does not cover the stages.
+    Watchdog verdict counted readings taken after all of them. Holds the run's
+    stage lock so no stage call is in flight meanwhile. Returns True on success
+    and False, without a call, when the verdict does not cover the stages.
     """
-    verdict = run.verdict
-    if probed_host is None:
-        reason = "no probed host"
-    elif not run.staged_hosts:
-        reason = "no stage returned"
-    elif any(host != probed_host for host in run.staged_hosts):
-        reason = f"stages on {run.staged_hosts}"
-    elif verdict is None:
-        reason = "no verdict"
-    elif verdict.stages_seen != len(run.staged_hosts):
-        reason = (
-            f"verdict covers {verdict.stages_seen} of {len(run.staged_hosts)} stages"
-        )
-    else:
-        reason = None
-    if reason is not None:
-        log.warning(
-            "run %s: commit_generation skipped for host=%s: %s",
-            run.run_id,
-            probed_host,
-            reason,
-        )
-        return False
-    try:
-        await call_tool(nixos_mcp, "commit_generation", {"host": probed_host})
+    async with run.stage_lock:
+        reason = _commit_skip_reason(run, probed_host, verdict)
+        if reason is not None:
+            log.warning(
+                "run %s: commit_generation skipped for host=%s: %s",
+                run.run_id,
+                probed_host,
+                reason,
+            )
+            return False
+        run.commit_attempted_stages = len(run.staged_hosts)
+        try:
+            await call_tool(nixos_mcp, "commit_generation", {"host": probed_host})
+        except Exception:
+            log.exception("commit_generation failed for host=%s", probed_host)
+            return False
+        run.committed_stages = len(run.staged_hosts)
         return True
-    except Exception:
-        log.exception("commit_generation failed for host=%s", probed_host)
-        return False
 
 
 def _created_pr_number(msgs: list[ModelMessage]) -> int | None:
@@ -912,6 +922,7 @@ async def _dispatch_remediation_and_watchdog(
                 agent_branch=agent_branch,
                 breaker=breaker,
                 staged_hosts=run.staged_hosts,
+                stage_lock=run.stage_lock,
             )
         run.commit_shas = _committed_shas(rem_msgs)
         remediation_result = await _gate_and_reconcile(
@@ -943,6 +954,7 @@ async def _dispatch_remediation_and_watchdog(
                             agent_branch=agent_branch,
                             breaker=breaker,
                             staged_hosts=run.staged_hosts,
+                            stage_lock=run.stage_lock,
                         )
                     )
                     wtch_task = tg.create_task(run_watchdog(target_deps))
@@ -1672,7 +1684,9 @@ async def _run_attempt(
             elif watchdog_result.degraded:
                 outcome = "flux_degraded"
             elif report.recommended_action == "nixos_rebuild" and not (
-                await _commit_nixos_generation(nixos_mcp, run, report.target_host)
+                await _commit_nixos_generation(
+                    nixos_mcp, run, report.target_host, watchdog_result
+                )
             ):
                 outcome = _COMMIT_GENERATION_FAILED_OUTCOME
             else:

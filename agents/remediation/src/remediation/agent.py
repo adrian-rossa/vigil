@@ -10,6 +10,7 @@ Tool scope: git, flux, and nixos MCP clients only.
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 from common import trace
@@ -240,6 +241,7 @@ async def run_remediation(
     breaker: Breaker | None = None,
     require_human_review: bool = False,
     staged_hosts: list[str] | None = None,
+    stage_lock: asyncio.Lock | None = None,
 ) -> tuple[RemediationResult, RunUsage, list[ModelMessage]]:
     refusal = _preflight_refusal(report, source_branch)
     if refusal is not None:
@@ -260,6 +262,7 @@ async def run_remediation(
             filter_func=lambda _ctx, td: td.name not in _ORCHESTRATOR_OWNED_NIXOS_TOOLS,
         ),
         staged_hosts=staged_hosts if staged_hosts is not None else [],
+        stage_lock=stage_lock if stage_lock is not None else asyncio.Lock(),
     )
 
     nonce = new_nonce()
