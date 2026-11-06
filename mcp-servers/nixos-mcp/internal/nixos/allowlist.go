@@ -3,10 +3,16 @@ package nixos
 import (
 	"fmt"
 	"path"
+	"slices"
+	"strconv"
 	"strings"
 )
 
-const catTokenCount = 2
+const (
+	catTokenCount   = 2
+	flockPrefixLen  = 4
+	rebuildLockPath = "/var/lock/vigil-nixos-rebuild"
+)
 
 var allowList = map[string]map[string]bool{
 	"cat":                     {flakeAttrPath: true, reconciledRevisionPath: true},
@@ -53,7 +59,7 @@ func firstSubCommand(args []string) (string, bool) {
 	return "", false
 }
 
-func validateCommand(cmd string) error {
+func validateCommand(cmd string, lockWaitSeconds int) error {
 	segments := splitChainedCommand(cmd)
 	if len(segments) == 0 {
 		return fmt.Errorf("empty command")
@@ -62,6 +68,13 @@ func validateCommand(cmd string) error {
 		tokens := commandTokens(segment)
 		if len(tokens) == 0 {
 			return fmt.Errorf("empty command segment")
+		}
+		if path.Base(tokens[0]) == "flock" {
+			want := []string{"-w", strconv.Itoa(lockWaitSeconds), rebuildLockPath}
+			if len(tokens) <= flockPrefixLen || !slices.Equal(tokens[1:flockPrefixLen], want) {
+				return fmt.Errorf("flock accepts only -w %d %s followed by a command", lockWaitSeconds, rebuildLockPath)
+			}
+			tokens = tokens[flockPrefixLen:]
 		}
 		binary := path.Base(tokens[0])
 		permitted, ok := allowList[binary]

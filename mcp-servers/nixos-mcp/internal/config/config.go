@@ -10,15 +10,18 @@ import (
 )
 
 const (
-	MaxOutputBytesDescribe = 4096
-	MaxOutputBytesLogs     = 2048
-	SSHDialTimeoutSeconds  = 15
-	SSHDialRetries         = 3
-	SSHDialBackoffMs       = 500
-	defaultSSHPort         = "22"
-	forwardHost            = "127.0.0.1"
-	minPort                = 1
-	maxPort                = 65535
+	MaxOutputBytesDescribe        = 4096
+	MaxOutputBytesLogs            = 2048
+	SSHDialTimeoutSeconds         = 15
+	SSHDialRetries                = 3
+	SSHDialBackoffMs              = 500
+	defaultSSHPort                = "22"
+	forwardHost                   = "127.0.0.1"
+	minPort                       = 1
+	maxPort                       = 65535
+	RebuildLockWaitEnv            = "NIXOS_REBUILD_LOCK_WAIT_S"
+	DefaultRebuildLockWaitSeconds = 120
+	MaxRebuildLockWaitSeconds     = 600
 )
 
 type SSHHost struct {
@@ -35,6 +38,7 @@ type Config struct {
 	SSHDialTimeout         time.Duration
 	SSHDialRetries         int
 	SSHDialBackoff         time.Duration
+	RebuildLockWaitSeconds int
 }
 
 func ParseSSHHosts(raw string) ([]SSHHost, error) {
@@ -79,6 +83,10 @@ func Load() (*Config, error) {
 	if keyPath == "" {
 		keyPath = "~/.ssh/id_ed25519"
 	}
+	lockWait, err := RebuildLockWaitSeconds()
+	if err != nil {
+		return nil, err
+	}
 	return &Config{
 		SSHHosts:               hosts,
 		SSHUser:                user,
@@ -88,6 +96,7 @@ func Load() (*Config, error) {
 		SSHDialTimeout:         time.Duration(envInt("SSH_DIAL_TIMEOUT_SECONDS", SSHDialTimeoutSeconds)) * time.Second,
 		SSHDialRetries:         envInt("SSH_DIAL_RETRIES", SSHDialRetries),
 		SSHDialBackoff:         time.Duration(envInt("SSH_DIAL_BACKOFF_MS", SSHDialBackoffMs)) * time.Millisecond,
+		RebuildLockWaitSeconds: lockWait,
 	}, nil
 }
 
@@ -98,4 +107,16 @@ func envInt(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func RebuildLockWaitSeconds() (int, error) {
+	v := os.Getenv(RebuildLockWaitEnv)
+	if v == "" {
+		return DefaultRebuildLockWaitSeconds, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 || n > MaxRebuildLockWaitSeconds {
+		return 0, fmt.Errorf("%s must be a whole number of seconds from 1 to %d, got %q", RebuildLockWaitEnv, MaxRebuildLockWaitSeconds, v)
+	}
+	return n, nil
 }

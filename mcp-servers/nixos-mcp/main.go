@@ -23,7 +23,7 @@ func main() {
 		log.Fatal("nixos-mcp: SSH_HOSTS is required; refusing to start without an allow-list")
 	}
 
-	client, err := nixos.NewRealNixOSClient(cfg.SSHUser, cfg.SSHKeyPath, cfg.SSHHosts, cfg.SSHDialTimeout, cfg.SSHDialRetries, cfg.SSHDialBackoff)
+	client, err := nixos.NewRealNixOSClient(cfg.SSHUser, cfg.SSHKeyPath, cfg.SSHHosts, cfg.SSHDialTimeout, cfg.SSHDialRetries, cfg.SSHDialBackoff, cfg.RebuildLockWaitSeconds)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "nixos client: %v\n", err)
 		os.Exit(1)

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -18,16 +19,27 @@ import (
 )
 
 const (
-	bootGen      = 5
-	stagedGen    = 4
-	fakeHostName = "fake-host"
-	fakeUser     = "fake-user"
-	fakeDialWait = 5 * time.Second
-	hookExitCode = 100
-	unknownExit  = 255
-	dirMode      = 0o755
-	fileMode     = 0o644
+	bootGen       = 5
+	stagedGen     = 4
+	fakeHostName  = "fake-host"
+	fakeUser      = "fake-user"
+	fakeDialWait  = 5 * time.Second
+	hookExitCode  = 100
+	unknownExit   = 255
+	dirMode       = 0o755
+	fileMode      = 0o644
+	fifoMode      = 0o600
+	fakeUsageExit = 64
 )
+
+const flockScript = `#!/bin/sh
+[ "$1 $2 $3" = "-w %[1]d %[2]s" ] || exit %[3]d
+echo "flock $*" >> "$FAKE_ROOT/calls"
+[ -e "$FAKE_ROOT/fail/lock-timeout" ] && exit 1
+[ -p "$FAKE_ROOT/lock-held" ] && cat "$FAKE_ROOT/lock-held" > /dev/null
+shift 3
+exec "$@"
+`
 
 const sudoScript = `#!/bin/sh
 a=$1; shift
@@ -110,6 +122,7 @@ func newFakeHost(t *testing.T) *fakeHost {
 	write(t, filepath.Join(root, "bin/sudo"), sudoScript, dirMode)
 	write(t, filepath.Join(root, "bin/systemctl"), systemctlScript, dirMode)
 	write(t, filepath.Join(root, "bin/nix-env"), nixEnvScript, dirMode)
+	write(t, filepath.Join(root, "bin/flock"), fmt.Sprintf(flockScript, testLockWait, rebuildLockPath, fakeUsageExit), dirMode)
 	for _, gen := range []int{stagedGen, bootGen} {
 		storeDir := filepath.Join(root, "store", strconv.Itoa(gen))
 		if err := os.MkdirAll(filepath.Join(storeDir, "bin"), dirMode); err != nil {
@@ -173,13 +186,14 @@ func (h *fakeHost) startSSH() *realNixOSClient {
 		}
 	}()
 	return &realNixOSClient{
-		user:        fakeUser,
-		hostAddrs:   map[string]string{fakeHostName: lis.Addr().String()},
-		dialTimeout: fakeDialWait,
-		dialRetries: 1,
-		dialBackoff: time.Millisecond,
-		dialFunc:    (&net.Dialer{}).DialContext,
-		signer:      hostSigner,
+		user:            fakeUser,
+		hostAddrs:       map[string]string{fakeHostName: lis.Addr().String()},
+		dialTimeout:     fakeDialWait,
+		dialRetries:     1,
+		dialBackoff:     time.Millisecond,
+		dialFunc:        (&net.Dialer{}).DialContext,
+		signer:          hostSigner,
+		rebuildLockWait: testLockWait,
 	}
 }
 
@@ -380,5 +394,72 @@ func TestCommitGenerationWithAFailedStopLeavesTheRunningSystemAsBootDefault(t *t
 	h.deadManReboot()
 	if got := h.read("booted"); got != stagedGen {
 		t.Errorf("booted = %d, want %d", got, stagedGen)
+	}
+}
+
+func TestStageGenerationArmsOnlyOnceTheRebuildLockIsFree(t *testing.T) {
+	h := newFakeHost(t)
+	fifo := filepath.Join(h.root, "lock-held")
+	if err := syscall.Mkfifo(fifo, fifoMode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if r, err := os.OpenFile(fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0); err == nil {
+			_ = r.Close()
+		}
+	})
+	done := make(chan error, 1)
+	go func() { done <- h.stage() }()
+	opened := make(chan *os.File, 1)
+	go func() {
+		w, err := os.OpenFile(fifo, os.O_WRONLY, 0)
+		if err == nil {
+			opened <- w
+		}
+	}()
+	var writer *os.File
+	select {
+	case err := <-done:
+		t.Fatalf("stage finished without waiting for the rebuild lock: %v", err)
+	case writer = <-opened:
+	}
+	if h.armed() {
+		t.Error("timer armed while the rebuild lock is held")
+	}
+	if strings.Contains(h.calls(), "nix-env") {
+		t.Errorf("generation switched while the rebuild lock is held: %s", h.calls())
+	}
+	_ = writer.Close()
+	if err := <-done; err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if !h.armed() {
+		t.Error("timer not armed after the rebuild lock was released")
+	}
+	calls := h.calls()
+	arm := strings.Index(calls, fmt.Sprintf("flock -w %d %s systemctl start rollback-gate.timer", testLockWait, rebuildLockPath))
+	switchGen := strings.Index(calls, "nix-env --switch-generation")
+	if arm < 0 || switchGen < 0 || arm > switchGen {
+		t.Errorf("arm under the lock does not precede the generation switch: %s", calls)
+	}
+}
+
+func TestStageGenerationWithTheRebuildLockBusyArmsNothing(t *testing.T) {
+	h := newFakeHost(t)
+	h.fail("lock-timeout")
+	if err := h.stage(); err == nil {
+		t.Fatal("stage succeeded without the rebuild lock")
+	}
+	if h.armed() {
+		t.Error("timer armed without the rebuild lock")
+	}
+	if strings.Contains(h.calls(), "nix-env") {
+		t.Errorf("generation switched without the rebuild lock: %s", h.calls())
+	}
+	if got := h.profile(); got != bootGen {
+		t.Errorf("profile = %d, want %d", got, bootGen)
+	}
+	if got := h.running(); got != bootGen {
+		t.Errorf("running = %d, want %d", got, bootGen)
 	}
 }

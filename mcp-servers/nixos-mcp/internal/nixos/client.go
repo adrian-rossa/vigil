@@ -68,17 +68,21 @@ type NixOSClient interface {
 }
 
 type realNixOSClient struct {
-	user        string
-	signer      gossh.Signer
-	hostAddrs   map[string]string
-	dialTimeout time.Duration
-	dialRetries int
-	dialBackoff time.Duration
-	dialFunc    dialFunc
-	runCommand  func(ctx context.Context, host, cmd string) (string, error)
+	user            string
+	signer          gossh.Signer
+	hostAddrs       map[string]string
+	dialTimeout     time.Duration
+	dialRetries     int
+	dialBackoff     time.Duration
+	dialFunc        dialFunc
+	runCommand      func(ctx context.Context, host, cmd string) (string, error)
+	rebuildLockWait int
 }
 
-func NewRealNixOSClient(user, keyPath string, hosts []config.SSHHost, dialTimeout time.Duration, dialRetries int, dialBackoff time.Duration) (NixOSClient, error) {
+func NewRealNixOSClient(user, keyPath string, hosts []config.SSHHost, dialTimeout time.Duration, dialRetries int, dialBackoff time.Duration, rebuildLockWaitSeconds int) (NixOSClient, error) {
+	if rebuildLockWaitSeconds <= 0 {
+		return nil, fmt.Errorf("rebuild lock wait must be positive, got %d", rebuildLockWaitSeconds)
+	}
 	expanded, err := expandTilde(keyPath)
 	if err != nil {
 		return nil, err
@@ -105,13 +109,14 @@ func NewRealNixOSClient(user, keyPath string, hosts []config.SSHHost, dialTimeou
 		hostAddrs[h.Name] = h.Addr
 	}
 	client := &realNixOSClient{
-		user:        user,
-		signer:      signer,
-		hostAddrs:   hostAddrs,
-		dialTimeout: dialTimeout,
-		dialRetries: dialRetries,
-		dialBackoff: dialBackoff,
-		dialFunc:    (&net.Dialer{Timeout: dialTimeout}).DialContext,
+		user:            user,
+		signer:          signer,
+		hostAddrs:       hostAddrs,
+		dialTimeout:     dialTimeout,
+		dialRetries:     dialRetries,
+		dialBackoff:     dialBackoff,
+		dialFunc:        (&net.Dialer{Timeout: dialTimeout}).DialContext,
+		rebuildLockWait: rebuildLockWaitSeconds,
 	}
 	client.runCommand = client.runSSH
 	return client, nil
@@ -136,7 +141,7 @@ func (c *realNixOSClient) runSSH(ctx context.Context, host, cmd string) (string,
 	if err != nil {
 		return "", err
 	}
-	if err := validateCommand(cmd); err != nil {
+	if err := validateCommand(cmd, c.rebuildLockWait); err != nil {
 		return "", err
 	}
 	cfg := &gossh.ClientConfig{
@@ -206,15 +211,15 @@ func (c *realNixOSClient) GetGenerations(ctx context.Context, host string) (stri
 
 const commitGenerationCommand = "sudo systemctl is-active rollback-gate.timer && sudo nix-env -p /nix/var/nix/profiles/system --set /run/current-system && sudo /run/current-system/bin/switch-to-configuration boot && sudo systemctl stop rollback-gate.timer"
 
-func stageGenerationCommand(generation int) string {
+func stageGenerationCommand(generation, lockWaitSeconds int) string {
 	return fmt.Sprintf(
-		"sudo systemctl start rollback-gate.timer && sudo nix-env --switch-generation %d -p /nix/var/nix/profiles/system && sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test && sudo systemctl restart systemd-sysctl",
-		generation,
+		"sudo flock -w %d %s systemctl start rollback-gate.timer && sudo nix-env --switch-generation %d -p /nix/var/nix/profiles/system && sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test && sudo systemctl restart systemd-sysctl",
+		lockWaitSeconds, rebuildLockPath, generation,
 	)
 }
 
 func (c *realNixOSClient) StageGeneration(ctx context.Context, host string, generation int) (string, error) {
-	return c.runSSH(ctx, host, stageGenerationCommand(generation))
+	return c.runSSH(ctx, host, stageGenerationCommand(generation, c.rebuildLockWait))
 }
 
 func (c *realNixOSClient) CommitGeneration(ctx context.Context, host string) (string, error) {

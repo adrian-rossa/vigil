@@ -2,6 +2,8 @@ package config
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -46,5 +48,42 @@ func TestLoadRejectsInvalidSSHHosts(t *testing.T) {
 	t.Setenv("SSH_HOSTS", "vigil-worker-1:ssh")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected Load to reject an invalid SSH_HOSTS entry")
+	}
+}
+
+func TestRebuildLockWaitSeconds_unsetUsesDefault(t *testing.T) {
+	t.Setenv(RebuildLockWaitEnv, "")
+	got, err := RebuildLockWaitSeconds()
+	if err != nil || got != DefaultRebuildLockWaitSeconds {
+		t.Errorf("RebuildLockWaitSeconds() = %d, %v; want %d, nil", got, err, DefaultRebuildLockWaitSeconds)
+	}
+}
+
+func TestRebuildLockWaitSeconds_readsValue(t *testing.T) {
+	t.Setenv(RebuildLockWaitEnv, "45")
+	got, err := RebuildLockWaitSeconds()
+	if err != nil || got != 45 {
+		t.Errorf("RebuildLockWaitSeconds() = %d, %v; want 45, nil", got, err)
+	}
+}
+
+func TestRebuildLockWaitSeconds_invalidFails(t *testing.T) {
+	aboveBound := strconv.Itoa(MaxRebuildLockWaitSeconds + 1)
+	for _, value := range []string{"0", "-5", "eight", aboveBound} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv(RebuildLockWaitEnv, value)
+			_, err := RebuildLockWaitSeconds()
+			if err == nil || !strings.Contains(err.Error(), RebuildLockWaitEnv) || !strings.Contains(err.Error(), strconv.Itoa(MaxRebuildLockWaitSeconds)) {
+				t.Errorf("expected error naming %s and the bound, got %v", RebuildLockWaitEnv, err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsAnInvalidRebuildLockWait(t *testing.T) {
+	t.Setenv("SSH_HOSTS", "vigil-worker-1")
+	t.Setenv(RebuildLockWaitEnv, "0")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected Load to reject an invalid rebuild lock wait")
 	}
 }

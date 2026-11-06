@@ -21,7 +21,7 @@ func TestRebuildCommandAcceptsHetznerAndLabAttributes(t *testing.T) {
 			if err != nil || got != tt.want {
 				t.Fatalf("rebuildCommand(%q, %q) = %q, %v; want %q", tt.action, tt.raw, got, err, tt.want)
 			}
-			if err := validateCommand(got); err != nil {
+			if err := validateCommand(got, testLockWait); err != nil {
 				t.Errorf("command rejected by allow-list: %v", err)
 			}
 		})
@@ -47,7 +47,7 @@ func TestRebuildCommandTrimsOnlyTrailingWhitespace(t *testing.T) {
 
 func TestCatAllowsOnlyTheFixedVigilFiles(t *testing.T) {
 	for _, cmd := range []string{readFlakeAttrCommand, readReconciledRevisionCommand} {
-		if err := validateCommand(cmd); err != nil {
+		if err := validateCommand(cmd, testLockWait); err != nil {
 			t.Fatalf("fixed read %q rejected: %v", cmd, err)
 		}
 	}
@@ -59,7 +59,7 @@ func TestCatAllowsOnlyTheFixedVigilFiles(t *testing.T) {
 		"cat /etc/vigil/flake-attr /etc/shadow",
 		"cat /var/lib/vigil-reconciler/last-sha /etc/shadow",
 	} {
-		if err := validateCommand(cmd); err == nil {
+		if err := validateCommand(cmd, testLockWait); err == nil {
 			t.Errorf("expected rejection for %q", cmd)
 		}
 	}

@@ -1,14 +1,30 @@
 package nixos
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/lucawalz/vigil/mcp-servers/nixos-mcp/internal/config"
 )
+
+const (
+	testLockWait    = config.DefaultRebuildLockWaitSeconds
+	otherLockWait   = 45
+	foreignLockWait = 999
+	stageCommandGen = 42
+	armTimerCommand = "systemctl start rollback-gate.timer"
+)
+
+func lockPrefix(wait int) string {
+	return fmt.Sprintf("sudo flock -w %d %s", wait, rebuildLockPath)
+}
 
 func TestValidateCommandAllowsEnumeratedCommands(t *testing.T) {
 	legitimate := []string{
 		"nix-env -p /nix/var/nix/profiles/system --list-generations",
-		"sudo systemctl start rollback-gate.timer && sudo nix-env --switch-generation 42 -p /nix/var/nix/profiles/system && sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test && sudo systemctl restart systemd-sysctl",
+		stageGenerationCommand(stageCommandGen, testLockWait),
+		lockPrefix(testLockWait) + " " + armTimerCommand,
 		"sudo systemctl restart systemd-sysctl",
 		commitGenerationCommand,
 		"sudo /nix/var/nix/profiles/system/bin/switch-to-configuration test",
@@ -25,7 +41,7 @@ func TestValidateCommandAllowsEnumeratedCommands(t *testing.T) {
 		"systemctl start --no-block vigil-auto-reconcile.service",
 	}
 	for _, cmd := range legitimate {
-		if err := validateCommand(cmd); err != nil {
+		if err := validateCommand(cmd, testLockWait); err != nil {
 			t.Errorf("legitimate command rejected: %q: %v", cmd, err)
 		}
 	}
@@ -41,20 +57,39 @@ func TestValidateCommandRejectsInjection(t *testing.T) {
 		"kubectl delete node vigil-control-plane-1",
 		"sudo /nix/var/nix/profiles/system/bin/switch-to-configuration switch",
 		"curl http://evil",
+		"sudo",
+		fmt.Sprintf("sudo flock -w %d /tmp/other %s", testLockWait, armTimerCommand),
+		lockPrefix(testLockWait),
+		fmt.Sprintf("sudo flock %s %s", rebuildLockPath, armTimerCommand),
+		fmt.Sprintf("sudo flock -n %s %s", rebuildLockPath, armTimerCommand),
+		lockPrefix(foreignLockWait) + " " + armTimerCommand,
+		fmt.Sprintf("%s flock -w %d %s %s", lockPrefix(testLockWait), testLockWait, rebuildLockPath, armTimerCommand),
+		lockPrefix(testLockWait) + " sudo " + armTimerCommand,
+		lockPrefix(testLockWait) + " rm -rf /",
 	}
 	for _, cmd := range rejected {
-		if err := validateCommand(cmd); err == nil {
+		if err := validateCommand(cmd, testLockWait); err == nil {
 			t.Errorf("expected rejection for %q", cmd)
 		}
 	}
 }
 
+func TestValidateCommandAcceptsOnlyTheConfiguredLockWait(t *testing.T) {
+	cmd := stageGenerationCommand(stageCommandGen, otherLockWait)
+	if err := validateCommand(cmd, otherLockWait); err != nil {
+		t.Errorf("stage command with the configured wait rejected: %v", err)
+	}
+	if err := validateCommand(cmd, testLockWait); err == nil {
+		t.Errorf("stage command with a different wait accepted: %q", cmd)
+	}
+}
+
 func TestStageGenerationCommandReappliesSysctls(t *testing.T) {
-	cmd := stageGenerationCommand(42)
+	cmd := stageGenerationCommand(stageCommandGen, testLockWait)
 	if !strings.Contains(cmd, "systemctl restart systemd-sysctl") {
 		t.Errorf("staged command missing sysctl reapply step: %q", cmd)
 	}
-	if err := validateCommand(cmd); err != nil {
+	if err := validateCommand(cmd, testLockWait); err != nil {
 		t.Errorf("staged command rejected by allow-list: %v", err)
 	}
 }
