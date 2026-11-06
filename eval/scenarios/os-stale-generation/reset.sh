@@ -7,6 +7,9 @@ SSH_KEY="${SSH_KEY_PATH:-$HOME/.ssh/id_ed25519}"
 CONFIG_DIR="/opt/nixos-config/hosts/vigil-worker-2"
 
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "root@${TARGET_HOST}" \
+  "pkill -f '[v]igil-nixos-rebuild systemctl start rollback-gate.timer' || true"
+
+ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "root@${TARGET_HOST}" \
   "systemctl stop rollback-gate.timer"
 
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "root@${TARGET_HOST}" \

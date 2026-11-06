@@ -8,6 +8,9 @@ TARGET_HOST="vigil-worker-1"
 SSH_OPTS=(-i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
 
 ssh "${SSH_OPTS[@]}" "root@${TARGET_HOST}" \
+  "pkill -f '[v]igil-nixos-rebuild systemctl start rollback-gate.timer' || true"
+
+ssh "${SSH_OPTS[@]}" "root@${TARGET_HOST}" \
   "systemctl stop rollback-gate.timer"
 
 ssh "${SSH_OPTS[@]}" "root@${TARGET_HOST}" \

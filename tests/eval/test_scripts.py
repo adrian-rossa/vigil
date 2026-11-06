@@ -26,10 +26,15 @@ EXECUTABLE = 0o755
 
 def test_os_reset_scripts_call_nixos_rebuild(scenarios_dir: Path) -> None:
     """Reset must pin the committed NixOS generation before the next run."""
+    kill = (
+        "pkill -f '[v]igil-nixos-rebuild systemctl start rollback-gate.timer' || true"
+    )
     stop = "systemctl stop rollback-gate.timer"
     for sid in NIXOS_HOST_RESET_IDS:
         body = (scenarios_dir / sid / "reset.sh").read_text()
+        assert kill in body, f"{sid}: missing `{kill}`"
         assert stop in body, f"{sid}: missing `{stop}`"
+        assert body.index(kill) < body.index(stop), sid
         assert "rollback-gate.timer || true" not in body, sid
     for sid in NIXOS_REBUILD_RESET_IDS:
         reset_sh = scenarios_dir / sid / "reset.sh"
