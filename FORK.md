@@ -35,7 +35,7 @@ Planned, not yet implemented: improved multi-fault handling. It will land only i
 Two series, both starting from the same upstream commit/release, so the difference between them is only this works contribution, making it measurable.
 
 ```
-baseline = upstream vigil + SREGym adapter + check scripts + latency probes
+baseline = upstream vigil + SREGym adapter + check scripts + latency probes + series ref branch parameter
 maineval = the same        + improved multi-fault handling
 ```
 

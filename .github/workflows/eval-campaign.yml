@@ -57,6 +57,11 @@ on:
         type: boolean
         required: false
         default: false
+      series_ref:
+        description: "Branch or tag the cell branches are created from"
+        type: string
+        required: false
+        default: "main"
 
 permissions:
   contents: read
@@ -202,6 +207,7 @@ jobs:
       TF_VAR_github_repository: ${{ github.repository }}
       TF_VAR_vigil_branch: eval/${{ github.run_id }}/${{ matrix.group }}-${{ matrix.seed }}
       VIGIL_EVAL_BRANCH: eval/${{ github.run_id }}/${{ matrix.group }}-${{ matrix.seed }}
+      SERIES_REF: ${{ inputs.series_ref }}
       VIGIL_EVAL_TARGET: ${{ inputs.target }}
       TF_VAR_location: ${{ inputs.location }}
       LAB_STATE: /home/runner/.local/state/vigil-lab
@@ -226,10 +232,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.harness-token.outputs.token }}
         run: |
-          MAIN_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          BASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SERIES_REF" --jq .sha)
           gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/heads/$VIGIL_EVAL_BRANCH" -f sha="$MAIN_SHA" > /dev/null
-          echo "created $VIGIL_EVAL_BRANCH at $MAIN_SHA"
+            -f ref="refs/heads/$VIGIL_EVAL_BRANCH" -f sha="$BASE_SHA" > /dev/null
+          echo "created $VIGIL_EVAL_BRANCH at $BASE_SHA"
 
       - name: Free runner disk
         if: inputs.target == 'runner'
@@ -386,7 +392,7 @@ jobs:
         env:
           AGENT_IP: ${{ steps.agent.outputs.ip }}
         run: |
-          eval/scripts/agent-exec.sh 'bash eval/scripts/reset-eval-baseline.sh'
+          eval/scripts/agent-exec.sh "SERIES_REF='$SERIES_REF' bash eval/scripts/reset-eval-baseline.sh"
           eval/scripts/agent-exec.sh "\${VIGIL_ORCHESTRATOR_RESTART_CMD:-systemctl restart vigil-orchestrator.service}"
           DEADLINE=$(($(date +%s) + 120))
           until eval/scripts/agent-exec.sh "curl -sf \"\${VIGIL_ORCHESTRATOR_URL:-http://localhost:9099}/healthz\" > /dev/null"; do

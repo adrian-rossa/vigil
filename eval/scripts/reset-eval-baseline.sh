@@ -8,9 +8,18 @@ SSH_KEY="${SSH_KEY_PATH:-/root/.ssh/id_ed25519}"
 SSH_USER="${SSH_USER:-root}"
 
 EVAL_BRANCH="${VIGIL_EVAL_BRANCH:-chore/eval-cluster-baseline}"
+SERIES_REF="${SERIES_REF:-main}"
 
-git -C "$REPO_ROOT" fetch origin
-git -C "$REPO_ROOT" reset --hard origin/main
+git -C "$REPO_ROOT" fetch origin --tags --prune
+
+# branch resolves to its remote copy, a tag or SHA resolve as given.
+if git -C "$REPO_ROOT" rev-parse --verify --quiet "origin/$SERIES_REF" > /dev/null; then
+  SERIES_TARGET="origin/$SERIES_REF"
+else
+  SERIES_TARGET="$SERIES_REF"
+fi
+
+git -C "$REPO_ROOT" reset --hard "$SERIES_TARGET"
 git -C "$REPO_ROOT" push --force origin HEAD:"$EVAL_BRANCH"
 
 flux resume kustomization cluster-apps -n flux-system --kubeconfig "$EVAL_RUNNER_KUBECONFIG" \
@@ -26,4 +35,4 @@ for host in vigil-worker-1 vigil-worker-2; do
     || echo "reset-eval-baseline: worker tree reset failed on $host, continuing" >&2
 done
 
-echo "reset-eval-baseline: $EVAL_BRANCH reset to origin/main" >&2
+echo "reset-eval-baseline: $EVAL_BRANCH reset to $SERIES_TARGET" >&2
