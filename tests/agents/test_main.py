@@ -7,6 +7,7 @@ import subprocess
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import AsyncIterator
 from unittest.mock import AsyncMock
 
@@ -29,6 +30,18 @@ from common.constants import (
     LLM_MAX_RETRIES,
     LLM_REQUEST_TIMEOUT_S,
     MCP_CALL_TIMEOUT_S,
+    MS_PER_S,
+    NIXOS_MCP_BUILD_READ_TIMEOUT_S,
+    NIXOS_MCP_READ_TIMEOUT_S,
+    NIXOS_MCP_SSH_DIAL_BACKOFF_DEFAULT_MS,
+    NIXOS_MCP_SSH_DIAL_BUDGET_S,
+    NIXOS_MCP_SSH_DIAL_RETRIES_DEFAULT,
+    NIXOS_MCP_SSH_DIAL_TIMEOUT_DEFAULT_S,
+    NIXOS_MCP_STAGE_MARGIN_S,
+    NIXOS_REBUILD_LOCK_WAIT_DEFAULT_S,
+    NIXOS_REBUILD_LOCK_WAIT_MAX_S,
+    NIXOS_REBUILD_LOCK_WAIT_MIN_S,
+    NIXOS_REBUILD_LOCK_WAIT_S,
     ROLLBACK_VERIFY_WINDOW_S,
     SHUTDOWN_DRAIN_S,
     SHUTDOWN_STOP_MARGIN_S,
@@ -38,6 +51,8 @@ from fastapi import FastAPI
 from orchestrator import agent as orch_mod
 from orchestrator import main as main_mod
 from orchestrator.models import RunRecord
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _canned_record() -> RunRecord:
@@ -160,6 +175,56 @@ def test_gate_wait_budget_derives_from_the_gate_wait_timeout() -> None:
     assert GATE_WAIT_TIMEOUT_S < GIT_MCP_READ_TIMEOUT_S < GATE_REVERT_CALL_TIMEOUT_S
 
 
+def test_nixos_mcp_read_timeout_derives_from_the_rebuild_lock_wait() -> None:
+    assert NIXOS_MCP_READ_TIMEOUT_S == max(
+        NIXOS_REBUILD_LOCK_WAIT_S
+        + NIXOS_MCP_SSH_DIAL_BUDGET_S
+        + NIXOS_MCP_STAGE_MARGIN_S,
+        NIXOS_MCP_BUILD_READ_TIMEOUT_S,
+    )
+    assert (
+        NIXOS_REBUILD_LOCK_WAIT_S + NIXOS_MCP_SSH_DIAL_BUDGET_S
+        < NIXOS_MCP_READ_TIMEOUT_S
+    )
+    assert NIXOS_MCP_BUILD_READ_TIMEOUT_S <= NIXOS_MCP_READ_TIMEOUT_S
+
+
+def test_nixos_mcp_dial_budget_matches_the_go_defaults() -> None:
+    if any(name.startswith("SSH_DIAL_") for name in os.environ):
+        pytest.skip("SSH_DIAL_* overrides the nixos-mcp dial defaults")
+    retries = int(_go_config_value("SSHDialRetries"))
+    expected_s = retries * int(_go_config_value("SSHDialTimeoutSeconds")) + (
+        int(_go_config_value("SSHDialBackoffMs")) / MS_PER_S * (2 ** (retries - 1) - 1)
+    )
+    assert NIXOS_MCP_SSH_DIAL_BUDGET_S == expected_s
+
+
+def _go_config_value(name: str) -> str:
+    source = (REPO_ROOT / "mcp-servers/nixos-mcp/internal/config/config.go").read_text()
+    match = re.search(rf"\b{name}\s*=\s*(\S+)", source)
+    assert match, name
+    return match.group(1)
+
+
+def test_nixos_mcp_mirrors_the_lock_wait_and_dial_settings() -> None:
+    assert _go_config_value("RebuildLockWaitEnv") == '"NIXOS_REBUILD_LOCK_WAIT_S"'
+    assert int(_go_config_value("DefaultRebuildLockWaitSeconds")) == (
+        NIXOS_REBUILD_LOCK_WAIT_DEFAULT_S
+    )
+    assert int(_go_config_value("MaxRebuildLockWaitSeconds")) == (
+        NIXOS_REBUILD_LOCK_WAIT_MAX_S
+    )
+    assert int(_go_config_value("SSHDialTimeoutSeconds")) == (
+        NIXOS_MCP_SSH_DIAL_TIMEOUT_DEFAULT_S
+    )
+    assert int(_go_config_value("SSHDialRetries")) == (
+        NIXOS_MCP_SSH_DIAL_RETRIES_DEFAULT
+    )
+    assert int(_go_config_value("SSHDialBackoffMs")) == (
+        NIXOS_MCP_SSH_DIAL_BACKOFF_DEFAULT_MS
+    )
+
+
 def test_gate_wait_budget_check_passes_with_defaults() -> None:
     main_mod._check_gate_wait_budget()
 
@@ -218,6 +283,51 @@ def test_gate_wait_budget_check_rejects_gate_wait_outside_git_mcp_bounds(
 ) -> None:
     monkeypatch.setattr(main_mod, "GATE_WAIT_TIMEOUT_S", gate_wait_s)
     with pytest.raises(ValueError, match=f"GATE_WAIT_TIMEOUT_S.*{gate_wait_s}"):
+        main_mod._check_gate_wait_budget()
+
+
+@pytest.mark.parametrize(
+    "lock_wait_s",
+    [NIXOS_REBUILD_LOCK_WAIT_MIN_S - 1, NIXOS_REBUILD_LOCK_WAIT_MAX_S + 1],
+)
+def test_gate_wait_budget_check_rejects_lock_wait_outside_nixos_mcp_bounds(
+    lock_wait_s: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(main_mod, "NIXOS_REBUILD_LOCK_WAIT_S", lock_wait_s)
+    with pytest.raises(ValueError, match=f"NIXOS_REBUILD_LOCK_WAIT_S.*{lock_wait_s}"):
+        main_mod._check_gate_wait_budget()
+
+
+def test_gate_wait_budget_check_rejects_nixos_read_timeout_not_above_lock_wait_and_dial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        main_mod,
+        "NIXOS_MCP_READ_TIMEOUT_S",
+        NIXOS_REBUILD_LOCK_WAIT_S + NIXOS_MCP_SSH_DIAL_BUDGET_S,
+    )
+    with pytest.raises(
+        ValueError, match="NIXOS_REBUILD_LOCK_WAIT_S.*NIXOS_MCP_READ_TIMEOUT_S"
+    ):
+        main_mod._check_gate_wait_budget()
+
+
+def test_gate_wait_budget_check_rejects_nixos_read_timeout_not_below_remediation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        main_mod, "NIXOS_REBUILD_LOCK_WAIT_S", NIXOS_REBUILD_LOCK_WAIT_MAX_S
+    )
+    monkeypatch.setattr(
+        main_mod,
+        "NIXOS_MCP_READ_TIMEOUT_S",
+        NIXOS_REBUILD_LOCK_WAIT_MAX_S
+        + NIXOS_MCP_SSH_DIAL_BUDGET_S
+        + NIXOS_MCP_STAGE_MARGIN_S,
+    )
+    with pytest.raises(
+        ValueError, match="NIXOS_MCP_READ_TIMEOUT_S.*REMEDIATION_TIMEOUT_S"
+    ):
         main_mod._check_gate_wait_budget()
 
 
@@ -304,9 +414,26 @@ async def test_lifespan_bounds_git_mcp_requests_by_the_gate_wait_budget(
     git_server = by_command["git-mcp"]
     assert git_server["read_timeout"] == GIT_MCP_READ_TIMEOUT_S
     assert git_server["env"]["GATE_WAIT_TIMEOUT_S"] == str(GATE_WAIT_TIMEOUT_S)
-    for command in ("kubectl-mcp", "flux-mcp", "nixos-mcp"):
+    for command in ("kubectl-mcp", "flux-mcp"):
         assert "read_timeout" not in by_command[command]
+    for command in ("kubectl-mcp", "flux-mcp", "nixos-mcp"):
         assert "GATE_WAIT_TIMEOUT_S" not in by_command[command]["env"]
+
+
+async def test_lifespan_bounds_nixos_mcp_requests_by_the_rebuild_lock_wait(
+    recorded_servers: list[dict], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("NIXOS_REBUILD_LOCK_WAIT_S", raising=False)
+    async with main_mod.lifespan(FastAPI()):
+        pass
+
+    nixos_server = {server["command"]: server for server in recorded_servers}[
+        "nixos-mcp"
+    ]
+    assert nixos_server["read_timeout"] == NIXOS_MCP_READ_TIMEOUT_S
+    assert nixos_server["env"]["NIXOS_REBUILD_LOCK_WAIT_S"] == str(
+        NIXOS_REBUILD_LOCK_WAIT_S
+    )
 
 
 _DRAIN_WORK_S = 0.05

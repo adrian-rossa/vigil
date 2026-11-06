@@ -15,6 +15,11 @@ from common.constants import (
     LLM_MAX_RETRIES,
     LLM_REQUEST_TIMEOUT_S,
     MCP_CALL_TIMEOUT_S,
+    NIXOS_MCP_READ_TIMEOUT_S,
+    NIXOS_MCP_SSH_DIAL_BUDGET_S,
+    NIXOS_REBUILD_LOCK_WAIT_MAX_S,
+    NIXOS_REBUILD_LOCK_WAIT_MIN_S,
+    NIXOS_REBUILD_LOCK_WAIT_S,
     POLLER_UNHEALTHY_AFTER,
     ROLLBACK_TIMEOUT_S,
     ROLLBACK_VERIFY_WINDOW_S,
@@ -73,8 +78,23 @@ def _check_gate_wait_budget() -> None:
             f"GATE_WAIT_TIMEOUT_S must be between {GATE_WAIT_TIMEOUT_MIN_S} and "
             f"{GATE_WAIT_TIMEOUT_MAX_S} seconds, got {GATE_WAIT_TIMEOUT_S}"
         )
+    if not (
+        NIXOS_REBUILD_LOCK_WAIT_MIN_S
+        <= NIXOS_REBUILD_LOCK_WAIT_S
+        <= NIXOS_REBUILD_LOCK_WAIT_MAX_S
+    ):
+        raise ValueError(
+            f"NIXOS_REBUILD_LOCK_WAIT_S must be between "
+            f"{NIXOS_REBUILD_LOCK_WAIT_MIN_S} and "
+            f"{NIXOS_REBUILD_LOCK_WAIT_MAX_S} seconds, got {NIXOS_REBUILD_LOCK_WAIT_S}"
+        )
     gate_wait = ("GATE_WAIT_TIMEOUT_S", GATE_WAIT_TIMEOUT_S)
     read = ("GIT_MCP_READ_TIMEOUT_S", GIT_MCP_READ_TIMEOUT_S)
+    nixos_wait = (
+        "NIXOS_REBUILD_LOCK_WAIT_S + NIXOS_MCP_SSH_DIAL_BUDGET_S",
+        NIXOS_REBUILD_LOCK_WAIT_S + NIXOS_MCP_SSH_DIAL_BUDGET_S,
+    )
+    nixos_read = ("NIXOS_MCP_READ_TIMEOUT_S", NIXOS_MCP_READ_TIMEOUT_S)
     llm_retry_s = (1 + LLM_MAX_RETRIES) * LLM_REQUEST_TIMEOUT_S
     llm_retry = ("(1 + LLM_MAX_RETRIES) * LLM_REQUEST_TIMEOUT_S", llm_retry_s)
     revert_call = ("GATE_REVERT_CALL_TIMEOUT_S", GATE_REVERT_CALL_TIMEOUT_S)
@@ -91,6 +111,8 @@ def _check_gate_wait_budget() -> None:
     run = ("ORCHESTRATOR_RUN_TIMEOUT_S", ORCHESTRATOR_RUN_TIMEOUT_S)
     for (shorter, shorter_s), (longer, longer_s) in (
         (gate_wait, read),
+        (nixos_wait, nixos_read),
+        (nixos_read, remediation),
         (read, revert_call),
         (llm_retry, remediation),
         (attempt, run),
@@ -126,6 +148,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # environment, breaking KUBECONFIG, PATH, etc.
     env = os.environ.copy()
     git_env = {**env, "GATE_WAIT_TIMEOUT_S": str(GATE_WAIT_TIMEOUT_S)}
+    nixos_env = {**env, "NIXOS_REBUILD_LOCK_WAIT_S": str(NIXOS_REBUILD_LOCK_WAIT_S)}
 
     kubectl_argv = cmds["kubectl"]
     flux_argv = cmds["flux"]
@@ -138,7 +161,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         ) as kubectl_mcp,
         MCPServerStdio(command=flux_argv[0], args=flux_argv[1:], env=env) as flux_mcp,
         MCPServerStdio(
-            command=nixos_argv[0], args=nixos_argv[1:], env=env
+            command=nixos_argv[0],
+            args=nixos_argv[1:],
+            env=nixos_env,
+            read_timeout=NIXOS_MCP_READ_TIMEOUT_S,
         ) as nixos_mcp,
         MCPServerStdio(
             command=git_argv[0],
