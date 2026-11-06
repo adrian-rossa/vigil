@@ -48,6 +48,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.usage import RunUsage
 from remediation.models import RemediationOutputRetryExhausted, RemediationResult
+from watchdog import agent as watchdog_agent_mod
 from watchdog.models import (
     HealthSnapshot,
     HealthSnapshotUnavailable,
@@ -4473,6 +4474,53 @@ async def test_os_target_without_a_check_ends_the_incident() -> None:
 
     assert await orch_mod._target_still_degraded(deps) is False
     nixos.direct_call_tool.assert_not_called()
+
+
+def _node_lease_target(renews: list[str]) -> tuple[WatchdogDeps, AsyncMock]:
+    calls = 0
+
+    async def _call(name, args):
+        nonlocal calls
+        renew = renews[min(calls, len(renews) - 1)]
+        calls += 1
+        return {
+            "content": "Conditions:\n  Ready: True\nKubeletVersion: v1.31\n"
+            f"LeaseRenewTime: {renew}\nLeaseDurationSeconds: 1\n"
+        }
+
+    kubectl = AsyncMock()
+    kubectl.direct_call_tool = AsyncMock(side_effect=_call)
+    deps = WatchdogDeps(
+        kubectl_mcp=kubectl,
+        flux_mcp=AsyncMock(),
+        nixos_mcp=AsyncMock(),
+        target_host=_WORKER_HOST,
+        os_check_kind=OS_CHECK_NODE_CONDITION,
+        os_check_key="Ready",
+        os_check_expected="True",
+    )
+    return deps, kubectl
+
+
+async def test_target_still_degraded_waits_for_the_node_lease_to_move(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    deps, kubectl = _node_lease_target(
+        ["2026-11-06T10:09:38.936388Z", "2026-11-06T10:09:48.936388Z"]
+    )
+
+    assert await orch_mod._target_still_degraded(deps) is False
+    assert kubectl.direct_call_tool.await_count == 2
+
+
+async def test_target_still_degraded_with_a_frozen_node_lease_reports_degraded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    deps, _ = _node_lease_target(["2026-11-06T10:09:38.936388Z"])
+
+    assert await orch_mod._target_still_degraded(deps) is True
 
 
 async def test_shutdown_during_the_finaliser_queues_no_try(

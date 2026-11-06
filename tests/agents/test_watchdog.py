@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -606,9 +607,148 @@ async def test_run_watchdog_os_path_does_not_call_kubectl(
     kubectl.direct_call_tool.assert_not_called()
 
 
-def _describe_node(conditions: dict[str, str]) -> str:
+_LEASE_BASE = datetime(2026, 11, 6, 10, 9, 38, 936388, tzinfo=timezone.utc)
+_LEASE_STEP_S = 10
+_LEASE_DURATION_S = 40
+
+
+def _lease_at(step: int) -> str:
+    return (_LEASE_BASE + timedelta(seconds=_LEASE_STEP_S * step)).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+
+
+def _describe_node(conditions: dict[str, str], renew: str | None = None) -> str:
     body = "".join(f"  {k}: {v}\n" for k, v in conditions.items())
-    return f"Name: vigil-worker-2\nConditions:\n{body}"
+    lease = (
+        f"LeaseRenewTime: {renew}\nLeaseDurationSeconds: {_LEASE_DURATION_S}\n"
+        if renew
+        else "LeaseRenewTime: unavailable\n"
+    )
+    return f"Name: vigil-worker-2\nConditions:\n{body}KubeletVersion: v1.31\n{lease}"
+
+
+def _describe_node_sequence(
+    conditions: dict[str, str], renews: list[str | None], on_call=None
+) -> AsyncMock:
+    calls = 0
+
+    async def _call(name, args):
+        nonlocal calls
+        index = min(calls, len(renews) - 1)
+        calls += 1
+        if on_call:
+            on_call(calls)
+        return {"content": _describe_node(conditions, renews[index])}
+
+    return AsyncMock(side_effect=_call)
+
+
+def _advancing_lease(conditions: dict[str, str]) -> AsyncMock:
+    calls = 0
+
+    async def _call(name, args):
+        nonlocal calls
+        calls += 1
+        return {"content": _describe_node(conditions, _lease_at(calls))}
+
+    return AsyncMock(side_effect=_call)
+
+
+def _node_deps(kubectl: AsyncMock, **extra) -> WatchdogDeps:
+    return WatchdogDeps(
+        kubectl_mcp=kubectl,
+        flux_mcp=AsyncMock(),
+        nixos_mcp=AsyncMock(),
+        target_host="vigil-worker-2",
+        os_check_kind=OS_CHECK_NODE_CONDITION,
+        os_check_key="Ready",
+        os_check_expected="True",
+        **extra,
+    )
+
+
+def _fast_watchdog(monkeypatch: pytest.MonkeyPatch, window: float, k: int) -> None:
+    monkeypatch.setattr(watchdog_agent_mod, "POLL_INTERVAL_S", 0.01)
+    monkeypatch.setattr(watchdog_agent_mod, "WINDOW_S", window)
+    monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", k)
+
+
+async def test_node_condition_with_a_frozen_lease_degrades(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_watchdog(monkeypatch, 0.2, 2)
+    kubectl = AsyncMock()
+    kubectl.direct_call_tool = _describe_node_sequence(
+        {"Ready": "True"}, [_lease_at(0)]
+    )
+
+    result = await run_watchdog(_node_deps(kubectl))
+
+    assert result.degraded is True
+    assert result.reason == "deadline_reached"
+
+
+async def test_node_condition_turns_healthy_after_the_lease_advances(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_watchdog(monkeypatch, 5.0, 1)
+    kubectl = AsyncMock()
+    kubectl.direct_call_tool = _describe_node_sequence(
+        {"Ready": "True"}, [_lease_at(0), _lease_at(0), _lease_at(1)]
+    )
+
+    result = await run_watchdog(_node_deps(kubectl))
+
+    assert result.degraded is False
+    assert kubectl.direct_call_tool.await_count == 3
+
+
+async def test_node_condition_with_an_unavailable_lease_degrades(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_watchdog(monkeypatch, 0.2, 1)
+    kubectl = AsyncMock()
+    kubectl.direct_call_tool = _describe_node_sequence({"Ready": "True"}, [None])
+
+    result = await run_watchdog(_node_deps(kubectl))
+
+    assert result.degraded is True
+    assert result.reason == "deadline_reached"
+
+
+async def test_stage_resets_the_lease_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fast_watchdog(monkeypatch, 0.3, 2)
+    staged: list[str] = []
+    kubectl = AsyncMock()
+    kubectl.direct_call_tool = _describe_node_sequence(
+        {"Ready": "True"},
+        [_lease_at(0), _lease_at(1), _lease_at(2), _lease_at(2)],
+        on_call=lambda n: staged.append("vigil-worker-2") if n == 3 else None,
+    )
+
+    result = await run_watchdog(_node_deps(kubectl, staged_hosts=staged))
+
+    assert result.degraded is True
+    assert result.reason == "deadline_reached"
+
+
+async def test_reading_during_a_stage_return_sets_no_lease_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fast_watchdog(monkeypatch, 0.3, 1)
+    staged: list[str] = []
+    kubectl = AsyncMock()
+    kubectl.direct_call_tool = _describe_node_sequence(
+        {"Ready": "True"},
+        [_lease_at(0), _lease_at(0), _lease_at(1)],
+        on_call=lambda n: staged.append("vigil-worker-2") if n == 2 else None,
+    )
+
+    result = await run_watchdog(_node_deps(kubectl, staged_hosts=staged))
+
+    assert result.degraded is True
+    assert result.reason == "deadline_reached"
 
 
 async def test_run_watchdog_os_node_disk_pressure_present_degrades(
@@ -651,10 +791,8 @@ async def test_run_watchdog_os_node_disk_pressure_cleared_healthy(
     monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", 2)
 
     kubectl = AsyncMock()
-    kubectl.direct_call_tool = AsyncMock(
-        return_value={
-            "content": _describe_node({"DiskPressure": "False", "Ready": "True"})
-        }
+    kubectl.direct_call_tool = _advancing_lease(
+        {"DiskPressure": "False", "Ready": "True"}
     )
     deps = WatchdogDeps(
         kubectl_mcp=kubectl,
@@ -707,9 +845,7 @@ async def test_run_watchdog_os_node_ready_healthy(
     monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", 2)
 
     kubectl = AsyncMock()
-    kubectl.direct_call_tool = AsyncMock(
-        return_value={"content": _describe_node({"Ready": "True"})}
-    )
+    kubectl.direct_call_tool = _advancing_lease({"Ready": "True"})
     deps = WatchdogDeps(
         kubectl_mcp=kubectl,
         flux_mcp=AsyncMock(),
@@ -734,10 +870,8 @@ async def test_run_watchdog_os_node_condition_does_not_call_nixos(
     monkeypatch.setattr(watchdog_agent_mod, "HEALTHY_STREAK_K", 1)
 
     kubectl = AsyncMock()
-    kubectl.direct_call_tool = AsyncMock(
-        return_value={
-            "content": _describe_node({"DiskPressure": "False", "Ready": "True"})
-        }
+    kubectl.direct_call_tool = _advancing_lease(
+        {"DiskPressure": "False", "Ready": "True"}
     )
     nixos = AsyncMock()
     nixos.direct_call_tool = AsyncMock()

@@ -68,6 +68,7 @@ from watchdog.agent import (
     OS_CHECK_SYSTEMD,
     capture_health_snapshot,
     is_workload_healthy,
+    node_condition_fresh,
     probe_os_target,
     revision_matches,
     run_watchdog,
@@ -605,9 +606,12 @@ async def _target_still_degraded(target: WatchdogDeps | None) -> bool:
     if target is None:
         return False
     try:
+        if target.target_host and target.target_kind is None:
+            if target.os_check_kind == OS_CHECK_NODE_CONDITION:
+                return not await node_condition_fresh(target)
+            async with asyncio.timeout(MCP_CALL_TIMEOUT_S):
+                return not (await probe_os_target(target)).healthy
         async with asyncio.timeout(MCP_CALL_TIMEOUT_S):
-            if target.target_host and target.target_kind is None:
-                return not await probe_os_target(target)
             snapshot = await capture_health_snapshot(target)
     except Exception as exc:
         log.warning("target health unreadable, ending the incident: %s", exc)

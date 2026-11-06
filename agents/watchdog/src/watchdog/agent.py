@@ -21,8 +21,10 @@ import asyncio
 import json
 import logging
 import os
+import re
 from collections.abc import Sequence
 from datetime import datetime, timezone
+from typing import NamedTuple
 
 from common.constants import WATCHDOG_HEALTHY_STREAK_K
 from common.flux_status import coerce_flux_status
@@ -300,7 +302,31 @@ def _node_condition_satisfied(
     return f"{condition}: {expected}" in text
 
 
-async def probe_os_target(deps: WatchdogDeps) -> bool:
+_LEASE_RENEW_RE = re.compile(r"^LeaseRenewTime: (\S+)$", re.MULTILINE)
+_LEASE_DURATION_RE = re.compile(r"^LeaseDurationSeconds: (\d+)$", re.MULTILINE)
+
+
+class OsReading(NamedTuple):
+    healthy: bool
+    lease_renew: datetime | None = None
+
+
+def _lease_renew_time(text: str) -> datetime | None:
+    match = _LEASE_RENEW_RE.search(text)
+    if match is None:
+        return None
+    try:
+        return datetime.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+
+
+def _lease_duration_s(text: str) -> int | None:
+    match = _LEASE_DURATION_RE.search(text)
+    return int(match.group(1)) if match else None
+
+
+async def probe_os_target(deps: WatchdogDeps) -> OsReading:
     """Report whether the NixOS host has converged to the declared OS state.
 
     systemd targets are healthy when the unit reports Active: active (running);
@@ -310,13 +336,12 @@ async def probe_os_target(deps: WatchdogDeps) -> bool:
     read.
     """
     if not deps.target_host:
-        return False
+        return OsReading(False)
     if deps.os_check_kind == OS_CHECK_NODE_CONDITION:
-        result = await call_tool(
-            deps.kubectl_mcp, "describe_node", {"name": deps.target_host}
-        )
-        return _node_condition_satisfied(
-            _coerce_tool_text(result), deps.os_check_key, deps.os_check_expected
+        text = await _describe_node_text(deps)
+        return OsReading(
+            _node_condition_satisfied(text, deps.os_check_key, deps.os_check_expected),
+            _lease_renew_time(text),
         )
     has_keyed_check = deps.os_check_kind in (
         OS_CHECK_SYSTEMD,
@@ -325,29 +350,63 @@ async def probe_os_target(deps: WatchdogDeps) -> bool:
     if not has_keyed_check:
         raise HealthSnapshotUnavailable("no resolvable os check")
     if deps.nixos_mcp is None:
-        return False
+        return OsReading(False)
     if deps.os_check_kind == OS_CHECK_SYSTEMD:
         result = await call_tool(
             deps.nixos_mcp,
             "get_systemd_status",
             {"host": deps.target_host, "unit": deps.os_check_key},
         )
-        return _ACTIVE_RUNNING in _coerce_tool_text(result)
+        return OsReading(_ACTIVE_RUNNING in _coerce_tool_text(result))
     result = await call_tool(
         deps.nixos_mcp,
         "get_sysctl",
         {"host": deps.target_host, "key": deps.os_check_key},
     )
-    return _parse_sysctl_value(_coerce_tool_text(result)) == deps.os_check_expected
+    return OsReading(
+        _parse_sysctl_value(_coerce_tool_text(result)) == deps.os_check_expected
+    )
 
 
-async def os_target_healthy(deps: WatchdogDeps) -> bool:
+async def _describe_node_text(deps: WatchdogDeps) -> str:
+    result = await call_tool(
+        deps.kubectl_mcp, "describe_node", {"name": deps.target_host}
+    )
+    return _coerce_tool_text(result)
+
+
+async def node_condition_fresh(deps: WatchdogDeps) -> bool:
+    """Report whether the condition holds and the lease renewed since the first read."""
+    loop = asyncio.get_event_loop()
+    text = await _describe_node_text(deps)
+    floor = _lease_renew_time(text)
+    duration = _lease_duration_s(text)
+    if floor is None or duration is None:
+        return False
+    deadline = loop.time() + duration
+    while True:
+        await asyncio.sleep(POLL_INTERVAL_S)
+        text = await _describe_node_text(deps)
+        renew = _lease_renew_time(text)
+        if (
+            renew is not None
+            and renew > floor
+            and _node_condition_satisfied(
+                text, deps.os_check_key, deps.os_check_expected
+            )
+        ):
+            return True
+        if loop.time() >= deadline:
+            return False
+
+
+async def os_target_healthy(deps: WatchdogDeps) -> OsReading:
     """Probe the NixOS host for one watchdog poll; a failed read counts as unhealthy."""
     try:
         return await probe_os_target(deps)
     except Exception as exc:
         log.warning("os watchdog probe failed, treating poll as unhealthy: %s", exc)
-        return False
+        return OsReading(False)
 
 
 class _Streak:
@@ -357,15 +416,32 @@ class _Streak:
         self._staged_hosts = staged_hosts
         self.counted = 0
         self.length = 0
+        self.lease_floor: datetime | None = None
 
     def stages_so_far(self) -> int:
         return len(self._staged_hosts)
 
-    def observe(self, healthy: bool, stages_before: int) -> bool:
+    def observe(
+        self,
+        healthy: bool,
+        stages_before: int,
+        lease_renew: datetime | None = None,
+        lease_required: bool = False,
+    ) -> bool:
         stages_now = len(self._staged_hosts)
         if stages_now != self.counted:
             self.length = 0
             self.counted = stages_now
+            self.lease_floor = None
+        if lease_required:
+            moved = (
+                lease_renew is not None
+                and self.lease_floor is not None
+                and lease_renew > self.lease_floor
+            )
+            if self.lease_floor is None and stages_before == self.counted:
+                self.lease_floor = lease_renew
+            healthy = healthy and moved
         self.length = (
             self.length + 1 if healthy and stages_before == self.counted else 0
         )
@@ -379,8 +455,13 @@ async def _run_os_watchdog(deps: WatchdogDeps) -> WatchdogResult:
     streak = _Streak(deps.staged_hosts)
     while loop.time() < deadline:
         stages_before = streak.stages_so_far()
-        healthy = await os_target_healthy(deps)
-        if streak.observe(healthy, stages_before):
+        reading = await os_target_healthy(deps)
+        if streak.observe(
+            reading.healthy,
+            stages_before,
+            reading.lease_renew,
+            deps.os_check_kind == OS_CHECK_NODE_CONDITION,
+        ):
             return WatchdogResult(
                 degraded=False,
                 snapshot=None,
