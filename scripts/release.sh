@@ -63,7 +63,7 @@ done
 
 write_changelog
 
-git add pyproject.toml agents/*/pyproject.toml eval/pyproject.toml uv.lock mcp-servers/*/internal/server/server.go "$CHANGELOG"
+git add pyproject.toml agents/*/pyproject.toml eval/pyproject.toml infra/lab/pyproject.toml uv.lock mcp-servers/*/internal/server/server.go "$CHANGELOG"
 git commit -m "chore(release): prepare $tag"
 
 cat <<EOF
