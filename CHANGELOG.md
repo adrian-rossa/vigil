@@ -13,6 +13,8 @@ All notable changes to this project are documented here.
 
 ### Features
 
+- **infra**: Name each snapshot after its run as well as its nixos hash ([85a8f44](https://github.com/lucawalz/vigil/commit/85a8f4440022c300c472501df420049f2f7e7239))
+- **nixos**: Wait for each partition link before disko formats it ([58f73f1](https://github.com/lucawalz/vigil/commit/58f73f1cc7a48e5439a04782ea91508dbb89a360), [#1473](https://github.com/lucawalz/vigil/issues/1473))
 - **orchestrator**: Commit a staged generation once its verdict confirms it ([83d12d7](https://github.com/lucawalz/vigil/commit/83d12d7cc2ceecd0523641a96f92e27b2d3e0807))
 - **orchestrator**: Serialise stage calls and commits on one run lock ([5e18d39](https://github.com/lucawalz/vigil/commit/5e18d3906836efd539d34fd169fa3567d5b46eeb))
 - **watchdog**: Count a node as healthy only after its lease renews ([96bb238](https://github.com/lucawalz/vigil/commit/96bb23854701d89514518a7c1378875922f0b6db))
@@ -128,6 +130,9 @@ All notable changes to this project are documented here.
 
 ### Documentation
 
+- **github**: Link questions from the issue chooser to the q&a discussions ([e8ea619](https://github.com/lucawalz/vigil/commit/e8ea619289a56041b4333f6ca562a124625c23a7))
+- **security**: State the response time and the supported release lines ([3ffc4b5](https://github.com/lucawalz/vigil/commit/3ffc4b5719e3ca3ef57bf6bb8c23b2fc7e444bf5))
+- **contributing**: Describe the release notes source and the release comments ([2cf7941](https://github.com/lucawalz/vigil/commit/2cf7941e592c3efaee345a8b8cac375f3f950902))
 - **infra**: Name the eval ruleset target in the github ui pattern form ([ccb2ffc](https://github.com/lucawalz/vigil/commit/ccb2ffccbdad515b674068ab3aae72ac482c2c0b))
 - **contributing**: State the startup budget checks for the gate wait timeout ([eaaff46](https://github.com/lucawalz/vigil/commit/eaaff46918bdd62baf5b655b04792b314aba1048))
 - **eval**: Describe the verified revert path of the k8s-rollback-1 scenario ([6a00fe3](https://github.com/lucawalz/vigil/commit/6a00fe3f0fe6c76d121e2f326003e65661898ea8))
@@ -157,6 +162,9 @@ All notable changes to this project are documented here.
 
 ### CI
 
+- Publish an openssf scorecard analysis and show its badge ([a2a612a](https://github.com/lucawalz/vigil/commit/a2a612a82887f378f7d6ffaca83b2a64ccce30a8))
+- **release**: Comment the release on referenced issues and pull requests ([90a9329](https://github.com/lucawalz/vigil/commit/90a932949d34751f6af89f960f4b82c7ada7b446))
+- **release**: Publish release notes copied from the changelog section ([5f9fc09](https://github.com/lucawalz/vigil/commit/5f9fc09b55c77dad8a96e9a008826c26c29619a4))
 - Pass the hetzner token to the reusable snapshot build workflow ([aa0773e](https://github.com/lucawalz/vigil/commit/aa0773eece2a527a7211ecb01b78a9c9eeeec29c))
 - **lab**: Give the smoke test's direct mcp calls their own timeout ([89fa308](https://github.com/lucawalz/vigil/commit/89fa30803a59debe463448ad9c43a3c3188e7186))
 - **eval**: Give each scenario group time for three tries per incident ([83e7722](https://github.com/lucawalz/vigil/commit/83e77228b76ce0d4b0a960b5be05aad4035cfb3c))
@@ -185,6 +193,7 @@ All notable changes to this project are documented here.
 
 ### Miscellaneous
 
+- Record go workspace checksums from the module graph ([f71a04f](https://github.com/lucawalz/vigil/commit/f71a04f502647662681842f908b96fc33ce7ca07))
 - **nixos**: Drop the unused github ssh identity from host config ([eae60b5](https://github.com/lucawalz/vigil/commit/eae60b56c25b9bb83150cd1dba4ea5b05d09d55d))
 - Record go workspace checksums from editor tooling ([3b209c3](https://github.com/lucawalz/vigil/commit/3b209c3af19100321e2a3729a38844ddfe4e9b0b))
 
