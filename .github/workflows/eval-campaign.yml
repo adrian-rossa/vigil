@@ -180,6 +180,8 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/build-nixos-snapshots.yml
+    secrets:
+      TF_VAR_HCLOUD_TOKEN: ${{ secrets.TF_VAR_HCLOUD_TOKEN }}
 
   run-scenarios:
     needs: [setup, check-secrets, snapshots]

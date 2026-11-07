@@ -3,6 +3,9 @@ name: Build NixOS Snapshots
 on:
   workflow_dispatch:
   workflow_call:
+    secrets:
+      TF_VAR_HCLOUD_TOKEN:
+        required: false
 
 permissions:
   contents: read
