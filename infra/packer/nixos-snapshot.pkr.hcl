@@ -23,7 +23,7 @@ source "hcloud" "nixos" {
   ssh_username         = "root"
   ssh_private_key_file = var.ssh_private_key_file
 
-  snapshot_name = "vigil-nixos-${var.role}-${var.nixos_hash}"
+  snapshot_name = "vigil-nixos-${var.role}-${var.nixos_hash}-${var.campaign_run_id}"
   snapshot_labels = merge(local.vigil_labels, {
     "vigil-role"       = var.role
     "vigil-nixos-hash" = var.nixos_hash
