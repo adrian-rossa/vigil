@@ -106,6 +106,7 @@ jobs:
               continue
             fi
             gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$number/comments" -f body="$body" > /dev/null
-            echo "Commented on #$number"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$number/labels" -f "labels[]=released" > /dev/null
+            echo "Commented on and labelled #$number"
             sleep 1
           done
