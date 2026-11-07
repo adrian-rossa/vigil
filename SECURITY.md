@@ -4,11 +4,13 @@ vigil handles cluster and cloud credentials (a Hetzner Cloud API token, GitHub A
 
 ## Reporting a vulnerability
 
-Report a suspected vulnerability privately through the "Report a vulnerability" form under the repository's Security tab, rather than opening a public issue. A maintainer will respond there.
+Report a suspected vulnerability privately through the "Report a vulnerability" form under the repository's Security tab, rather than opening a public issue. A maintainer acknowledges the report within 14 days and keeps the discussion in the private advisory. Once a fix is released, the advisory is published with the affected and fixed versions.
 
 ## Supported versions
 
 | Version  | Supported                                                                |
 | -------- | ------------------------------------------------------------------------ |
 | `main`   | Receives fixes                                                           |
+| `v2.x`   | Latest release; fixes ship in a patch release                            |
+| `v1.1.0` | Superseded by `v2.0.0`                                                   |
 | `v1.0.0` | Archived evaluation release, kept unchanged for reproducibility          |
