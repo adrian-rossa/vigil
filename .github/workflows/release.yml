@@ -73,3 +73,39 @@ jobs:
             prerelease=(--prerelease)
           fi
           gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" "${prerelease[@]}"
+
+  comment:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-rc.') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Comment on the issues and pull requests referenced in the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-rc.*' "$TAG^")
+          body="Released in [$TAG](https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG)."
+          git log --format=%s "$previous..$TAG" | sed -nE 's/.*\(#([0-9]+)\)$/\1/p' | sort -un | while read -r number; do
+            author=$(gh api "repos/$GITHUB_REPOSITORY/issues/$number" --jq .user.login)
+            if [ "$author" = "dependabot[bot]" ]; then
+              continue
+            fi
+            if gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$number/comments" --jq '.[].body' | grep -qxF "$body"; then
+              continue
+            fi
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$number/comments" -f body="$body" > /dev/null
+            echo "Commented on #$number"
+            sleep 1
+          done
