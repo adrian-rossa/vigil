@@ -1,4 +1,8 @@
 { diskDevice, ... }:
+let
+  # udevadm settle can return before udev recreates the partition links after the last table re-read
+  waitForPartitionLink = ''udevadm wait --settle --timeout 60 "$device"'';
+in
 {
   disko.devices.disk.main = {
     type = "disk";
@@ -17,6 +21,7 @@
             type = "filesystem";
             format = "vfat";
             mountpoint = "/boot";
+            preCreateHook = waitForPartitionLink;
           };
         };
         root = {
@@ -25,6 +30,7 @@
             type = "filesystem";
             format = "ext4";
             mountpoint = "/";
+            preCreateHook = waitForPartitionLink;
           };
         };
       };
