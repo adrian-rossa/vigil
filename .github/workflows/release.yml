@@ -55,8 +55,14 @@ jobs:
             exit 1
           fi
 
-      - name: Generate release notes
-        run: uvx git-cliff==2.14.2 --latest --strip header > "$RUNNER_TEMP/notes.md"
+      - name: Copy the release notes from the changelog
+        run: |
+          heading="## [${TAG#v}]"
+          awk -v heading="$heading" 'index($0, heading) == 1 { found = 1; next } found && /^## \[/ { exit } found { print }' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::CHANGELOG.md section $heading is empty"
+            exit 1
+          fi
 
       - name: Create GitHub release
         env:
