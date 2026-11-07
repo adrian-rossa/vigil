@@ -106,7 +106,7 @@ git tag -a vX.Y.Z -m vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The release workflow publishes the GitHub release only after a green `ci-gate` on the tagged commit. Only maintainers create tags.
+The release workflow publishes the GitHub release only after a green `ci-gate` on the tagged commit, with the version's `CHANGELOG.md` section as release notes. For a final release it then comments on every issue and pull request referenced as `(#n)` in a commit subject since the previous release, apart from Dependabot pull requests. Only maintainers create tags.
 
 ## Versioning
 
