@@ -56,7 +56,7 @@ for package in "${PACKAGES[@]}"; do
 done
 uv lock
 
-replace_in_place "s/^(const serverVersion = )\"[^\"]+\"/\1\"$version\"/" "$GIT_MCP_SERVER"
+replace_in_place "s/^([[:space:]]*(const )?serverVersion[[:space:]]*=[[:space:]]*)\"[^\"]+\"/\1\"$version\"/" "$GIT_MCP_SERVER"
 for file in "${LITERAL_MCP_SERVERS[@]}"; do
   replace_in_place "s/(NewMCPServer\(\"[a-z-]+\", )\"[^\"]+\"/\1\"$version\"/" "$file"
 done
