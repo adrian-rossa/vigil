@@ -97,7 +97,7 @@ func (s *GitServer) SetPRNumber(prNumber int) {
 }
 
 const (
-	serverVersion          = "1.1.0"
+	serverVersion          = "2.0.0"
 	gateWaitEndDescription = "when the wait ends without a merge, the final PR state is reported"
 )
 
