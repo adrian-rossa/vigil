@@ -168,7 +168,7 @@ jobs:
           gated=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$PROBE_BRANCH?per_page=100" \
             --jq "[.[] | select(.type == \"required_status_checks\") | .parameters.required_status_checks[].context | select(. == \"$REQUIRED_CHECK\")] | length")
           if [ "$gated" -eq 0 ]; then
-            echo "::error::No ruleset on $GITHUB_REPOSITORY requires the $REQUIRED_CHECK status check on eval/** branches; add a branch ruleset targeting refs/heads/eval/**/* with required status check $REQUIRED_CHECK"
+            echo "::error::No ruleset on $GITHUB_REPOSITORY requires the $REQUIRED_CHECK status check on eval/** branches; add a branch ruleset with the target branch pattern eval/**/* and required status check $REQUIRED_CHECK"
             failed=1
           fi
           [ "$failed" -eq 0 ] || exit 1
