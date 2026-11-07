@@ -1,6 +1,7 @@
 # vigil
 
 [![ci](https://github.com/lucawalz/vigil/actions/workflows/ci.yml/badge.svg)](https://github.com/lucawalz/vigil/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/lucawalz/vigil/badge)](https://scorecard.dev/viewer/?uri=github.com/lucawalz/vigil)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
