@@ -44,7 +44,7 @@ spec:
             requests:
               memory: "8Mi"
             limits:
-              memory: "64Mi"  # increased from 32Mi to avoid OOM
+              memory: "32Mi"
       volumes:
         - name: nginx-config-template
           configMap:
