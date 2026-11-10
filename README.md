@@ -103,6 +103,15 @@ make ci
 
 Plain `make` runs the same target. Live runs need the Hetzner Cloud eval cluster, provisioned as described in [`infra/terraform/README.md`](infra/terraform/README.md). The local lab in [`infra/lab/`](infra/lab/README.md) runs the cluster hosts as qemu VMs on a laptop or a GitHub runner. Scenarios and evaluation campaigns are covered in [`eval/README.md`](eval/README.md), and running the orchestrator locally in [CONTRIBUTING.md](CONTRIBUTING.md#running-the-orchestrator-locally).
 
+## Results
+
+The thesis, "Autonomous Fault Diagnosis and Remediation in Kubernetes Clusters Using LLM-Based Agents on Declarative Infrastructure", evaluates the system on the frozen `v1.0.0` release over 13 scenarios at three replicate seeds, 39 runs per model. Each figure below comes from one campaign report on the [`docs/eval-results`](https://github.com/lucawalz/vigil/tree/docs/eval-results/results) branch, which holds every recorded campaign.
+
+- Qwen3.5 (open-weight, campaign [28284031371](https://github.com/lucawalz/vigil/blob/docs/eval-results/results/28284031371/REPORT.md)): success rate 0.82, diagnosis accuracy 0.84, mean recovery time 192.96 s, and 8 of 13 scenarios passed on all three seeds.
+- Claude Sonnet 4.6 (campaign [28294405734](https://github.com/lucawalz/vigil/blob/docs/eval-results/results/28294405734/REPORT.md)): success rate 0.77, diagnosis accuracy 0.77, mean recovery time 138.31 s, and 9 of 13 scenarios passed on all three seeds.
+- Success counts a correct escalation on an ambiguous fault and an automatic rollback on the trap scenario as the intended outcome, so a model that declines to act on an unsafe fault is scored as correct.
+- Every rollback that was triggered succeeded in both campaigns (rollback success rate 1.00).
+
 ## Repository layout
 
 | Path | Contents |
