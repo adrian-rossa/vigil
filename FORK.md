@@ -22,9 +22,11 @@ To improve concurrent fault-handling, a deterministic config-path lock is implem
 
 | Area | Owner |
 |---|---|
-| Everything outside `eval/` | upstream. mainly not modified. |
-| Evaluation harness, check scripts and latency probes in `eval/` | this work, based on upstream existing eval harness |
-| `FORK.md` | this work. |
+| `agents/`, `mcp-servers/`, `common/`, `infra/nixos/`, `infra/terraform/` | upstream. unmodified. |
+| `eval/` — harness, check scripts, latency probes, scenario matrix | this work, based on the upstream eval harness |
+| `infra/overlays/hetzner/.../monitoring/`  alert `for:` overrides, one added `PrometheusRule`, Alertmanager routing | this work. measurement instrumentation only, |
+| `infra/agent-env.json` — `VIGIL_BLOCK_ALERT_TRIGGERS`, `PROM_POLLER_ENABLED` | this work. configuration only |
+| `FORK.md`, `docs/thesis/` | this work. |
 
 Planned, not yet implemented: improved multi-fault handling. It will land only in the second series, never in the baseline.
 

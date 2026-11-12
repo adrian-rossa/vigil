@@ -1,3 +1,10 @@
+customRules:
+  KubePodNotReady:  {for: 1m}
+  KubePodCrashLooping: {for: 1m}
+  KubeDeploymentReplicasMismatch: {for: 1m}
+  KubeContainerWaiting: {for: 1m}
+  KubeNodePressure: {for: 1m}
+
 alertmanager:
   enabled: true
   alertmanagerSpec:
