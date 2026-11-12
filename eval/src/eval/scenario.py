@@ -19,6 +19,7 @@ class HealthProbe(BaseModel):
     host: str | None = None
     command: str | None = None
 
+
 class FaultSpec(BaseModel):
     id: str
     component: str
@@ -27,11 +28,13 @@ class FaultSpec(BaseModel):
     inject_params: dict[str, Any] = Field(default_factory=dict)
     alert_name: str | None = None
 
+
 class WorkloadSpec(BaseModel):
     enabled: bool = False
     mode: Literal["stepped", "locust"] = "stepped"
     profile: list[int] = Field(default_factory=lambda: [50,200,50])
     ramp_s: int = 10
+
 
 class NoiseSpec(BaseModel):
     enabled: bool = False
@@ -40,6 +43,7 @@ class NoiseSpec(BaseModel):
     patterns: int = 2
     kinds: list[str] = Field(default_factory=lambda: ["pod_delete","cpu_stress"])
     target: str = "unrelated"
+
 
 class ScenarioDefinition(BaseModel):
     id: str
