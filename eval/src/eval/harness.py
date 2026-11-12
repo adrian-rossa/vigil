@@ -232,6 +232,45 @@ _SYMPTOM_CHECKS = {
 }
 
 
+def _probe_passes(probe: dict, kubeconfig: str | None = None) -> bool:
+    """True when the faults declared healthy state is positively observed"""
+    kind = probe.get("kind")
+
+    if kind == "http_ok":
+        r = subprocess.run(
+            [
+                "curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}",
+                "--max-time", "10", str(probe["url"]),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        return r.returncode == 0 and r.stdout.strip() == str(probe.get("expect", 200))
+
+    if kind == "kube_condition":
+        resource = str(probe["resource"])
+        rkind, _, name = resource.partition("/")
+        ns = probe.get("namespace", "default")
+        r = _kubectl(["get", rkind, name, "-n", ns, "-o", "json"], kubeconfig)
+        if r.returncode != 0:
+            return False
+        obj = json.loads(r.stdout)
+        condition = probe.get("condition")
+        if condition is None:
+            spec = obj.get("spec", {}).get("replicas", 0)
+            avail = obj.get("status", {}).get("availableReplicas", 0)
+            return spec > 0 and avail == spec
+        for c in obj.get("status", {}).get("conditions", []):
+            if c.get("type") == condition:
+                return str(c.get("status")) == str(probe.get("expect", "True"))
+        return False
+
+    if kind == "host_cmd":
+        r = _ssh(str(probe["host"]), str(probe["command"]))
+        return r.returncode == 0 and r.stdout.strip() == str(probe.get("expect", ""))
+
+    return False
+
+
 def _symptom_observed(verify: dict, kubeconfig: str | None = None) -> bool:
     """Return True when the fault symptom declared in verify_broken is present."""
     symptom = verify.get("symptom", "")
