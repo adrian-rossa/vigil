@@ -22,8 +22,8 @@ To improve concurrent fault-handling, a deterministic config-path lock is implem
 
 | Area | Owner |
 |---|---|
-| Everything outside `eval/` | upstream. Not modified. |
-| SREGym adapter, check scripts and latency probes in `eval/` | this work. |
+| Everything outside `eval/` | upstream. mainly not modified. |
+| Evaluation harness, check scripts and latency probes in `eval/` | this work, based on upstream existing eval harness |
 | `FORK.md` | this work. |
 
 Planned, not yet implemented: improved multi-fault handling. It will land only in the second series, never in the baseline.
@@ -35,7 +35,7 @@ Planned, not yet implemented: improved multi-fault handling. It will land only i
 Two series, both starting from the same upstream commit/release, so the difference between them is only this works contribution, making it measurable.
 
 ```
-baseline = upstream vigil + SREGym adapter + check scripts + latency probes + series ref branch parameter
+baseline = upstream vigil + SREGym adapter + check scripts + latency probes + series ref branch parameter + Alert Trigger Block set to 'false'
 maineval = the same        + improved multi-fault handling
 ```
 
