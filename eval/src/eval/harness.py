@@ -622,7 +622,7 @@ def _build_fault_event(
                 "status": "firing",
                 "labels": labels,
                 "annotations": {"summary": f"{alert_name} firing"},
-                "startsAt": "1970-01-01T00:00:00Z",
+                "startsAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "endsAt": "",
                 "generatorURL": "",
                 "fingerprint": _alert_fingerprint(labels),
@@ -856,8 +856,11 @@ async def run_one(
     _reset_circuit_breaker()
     log.info("running inject.sh for %s", scenario_id)
     head_before = _repo_head()
+    inject_start = time.monotonic()
     _run_script(inject_sh, seed, verbose=verbose)
+    inject_s = time.monotonic() - inject_start
     head_after = _repo_head()
+    log.info("inject.sh for %s took %.1fs", scenario_id, inject_s)
 
     target_host: str | None = None
     verify_broken: dict | None = None
