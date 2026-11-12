@@ -276,3 +276,53 @@ def test_forbidden_actions_roundtrips_through_yaml(tmp_scenarios_dir: Path) -> N
     )
     scenarios = load_scenarios(tmp_scenarios_dir)
     assert scenarios[0].forbidden_actions == ["nixos_rebuild"]
+
+
+def test_multi_fault_scenario_keeps_faults_and_probe(
+        tmp_scenarios_dir: Path,
+) -> None:
+    scenario_dir = tmp_scenarios_dir / "k8s-pair-1"
+    scenario_dir.mkdir()
+    (scenario_dir / "scenario.yaml").write_text(
+        yaml.dump(
+            {
+                "id": "k8s-pair-1",
+                "name": "two independent faults",
+                "layer": "k8s",
+                "root_cause_component": "Deployment/vigil-app",
+                "expected_action": "git_commit_k8s",
+                "expected_resolution_path": "diagnosis -> git_commit_k8s",
+                "alert_name": "KubePodNotReady",
+                "relationship": "independent",
+                "detection": "alert",
+                "faults": [
+                    {
+                        "id": "a",
+                        "component": "service/vigil-app",
+                        "severity": "user_facing",
+                        "health_probe": {
+                            "kind": "http_ok",
+                            "url": "http://vigil-app.default.svc/healthz",
+                            "expect": 200,
+                        },
+                    },
+                    {
+                        "id": "b",
+                        "component": "deployment/grafana",
+                        "severity": "internal",
+                        "health_probe": {
+                            "kind": "kube_condition",
+                            "resource": "deployment/grafana",
+                            "condition": "Available",
+                            "expect": "True",
+                        },
+                    },
+                ],
+            }
+        )
+    )
+    scenarios = load_scenarios(tmp_scenarios_dir)[0]
+    assert scenarios.relationship == "independent"
+    assert len(scenarios.faults) == 2
+    assert scenarios.faults[0].health_probe.window_s == 300
+    assert scenarios.faults[1].severity == "internal"
