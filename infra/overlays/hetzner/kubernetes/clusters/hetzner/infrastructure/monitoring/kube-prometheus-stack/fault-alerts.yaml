@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: vigil-fault-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: vigil.faults
+      rules:
+        - alert: KubeContainerOOMKilled
+          expr: |
+            increase(kube_pod_container_status_restarts_total[5m]) > 0
+              and on (namespace, pod, container)
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 0m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Container {{ $labels.container}} in {{$labels.namespace}}/{{ $labels.pod}} was OOMKilled"

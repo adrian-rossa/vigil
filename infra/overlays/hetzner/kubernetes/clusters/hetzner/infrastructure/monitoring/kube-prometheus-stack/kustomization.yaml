@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - helmrelease.yaml
+  - fault-alerts.yaml
 
 configMapGenerator:
   - name: prometheus-values
