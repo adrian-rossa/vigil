@@ -31,6 +31,7 @@ CIRCUIT_BREAKER_EXIT_CODE = 10
 DEFAULT_CIRCUIT_BREAKER_STATE_PATH = "/tmp/vigil-circuit-breaker.json"
 _TRUNC = 300
 _DEFAULT_ALERT_NAME = "VigilFaultDetected"
+_ALERT_DETECTION_TIMEOUT_S = 120.0
 _FINGERPRINT_LEN = 16
 
 log = logging.getLogger(__name__)
@@ -792,6 +793,7 @@ def _write_attempt(
     inject_s: float,
     records: list[dict],
     gaps_s: list[float],
+    detection_used: str = "synthetic",
 ) -> Path: 
     """Persist attempt-level metadata next to the primary run record"""
     attempt_path = path.with_name(f"{path.stem}_attempt.json")
@@ -801,6 +803,7 @@ def _write_attempt(
         "scenario": scenario_id,
         "seed": seed,
         "primary_run_id": path.stem,
+        "detection_used": detection_used,
         "inject_s": round(inject_s, 3),
         "n_runs": len(records),
         "run_ids": run_ids,
@@ -843,6 +846,51 @@ async def _wait_for_drain(
         await asyncio.sleep(_RESULT_POLL_INTERVAL_S)
 
 
+async def _follow_run(
+    runs_dir: Path, run_id: str, per_try_s: float, verbose: bool
+) -> Path:
+    """Wait for run and any queued retries until final record is written"""
+    current = run_id 
+    while True:
+        record = await _wait_for_record(runs_dir, current, per_try_s, verbose)
+        if is_final_record(record):
+            return runs_dir / f"{current}.json"
+        current = retry_run_id(record["incident_id"], record["attempts"] + 1)
+        log.info("run_id=%s - polling for the next try", current)
+
+
+def _detected_run_id(runs_dir: Path, since: float) -> str | None:
+    """Return first run_id started/tracing in runs_dir since window_start"""
+    records = _records_in_window(runs_dir, since, time.time() + 5)
+    if records and records[0].get("run_id"):
+        return str(records[0]["run_id"])
+    active = _in_flight_traces(runs_dir, since)
+    return active[0] if active else None
+
+
+async def _wait_for_alert_run(
+    runs_dir: Path,
+    since: float,
+    per_try_s: float,
+    detect_timeout_s: float = _ALERT_DETECTION_TIMEOUT_S,
+    verbose: bool = False,
+) -> Path | None:
+    """Wait for Alertmanager to start run, return None if no alert arrived in time"""
+    started = asyncio.get_event_loop().time()
+    while True:
+        run_id = _detected_run_id(runs_dir, since)
+        if run_id is not None:
+            log.info("detected real alert run_", run_id)
+            return await _follow_run(runs_dir, run_id, per_try_s, verbose)
+        if asyncio.get_event_loop().time() - started >= detect_timeout_s:
+            log.warning(
+                "no alert run within %.0fs - falling back to synthetic webhook",
+                detect_timeout_s,
+            )
+            return None
+        await asyncio.sleep(_RESULT_POLL_INTERVAL_S)
+
+
 async def trigger_and_wait(
     scenario_id: str,
     seed: int,
@@ -882,13 +930,7 @@ async def trigger_and_wait(
         (runs_dir / f"{stale}.json").unlink(missing_ok=True)
         (runs_dir / f"{stale}_trace.jsonl").unlink(missing_ok=True)
 
-    current = run_id
-    while True:
-        record = await _wait_for_record(runs_dir, current, per_try_s, verbose)
-        if is_final_record(record):
-            return runs_dir / f"{current}.json"
-        current = retry_run_id(record["incident_id"], record["attempts"] + 1)
-        log.info("run_id=%s - polling for the next try", current)
+    return await _follow_run(runs_dir, run_id, per_try_s, verbose)
 
 
 async def run_one(
@@ -969,12 +1011,14 @@ async def run_one(
 
     target_host: str | None = None
     verify_broken: dict | None = None
+    detection = "synthetic"
     scenario_yaml = scenarios_dir / scenario_id / "scenario.yaml"
     if scenario_yaml.exists():
         with scenario_yaml.open() as f:
             data = yaml.safe_load(f)
         target_host = (data.get("inject_params") or {}).get("target_host")
         verify_broken = data.get("verify_broken") or None
+        detection = str(data.get("detection") or "synthetic")
 
     try:
         if head_before and head_after and head_after != head_before:
@@ -990,19 +1034,33 @@ async def run_one(
         log.error("inject-assert failed for %s: %s", scenario_id, exc)
         return _emit_inject_failed_record(scenario_id, seed, model, str(exc), runs_dir)
 
-    path = await trigger_and_wait(
-        scenario_id=scenario_id,
-        seed=seed,
-        orchestrator_url=orchestrator_url,
-        runs_dir=runs_dir,
-        model=model,
-        timeout_s=timeout_s,
-        verbose=verbose,
-        target_host=target_host,
-    )
+    path: Path | None = None
+    detection_used = "synthetic"
+    if detection == "alert":
+        path = await _wait_for_alert_run(
+            runs_dir,
+            window_start,
+            timeout_s or DEFAULT_TIMEOUT_S,
+            verbose = verbose,
+        )
+        if path is not None:
+            detection_used = "alert"
+    if path is None:
+        path = await trigger_and_wait(
+            scenario_id=scenario_id,
+            seed=seed,
+            orchestrator_url=orchestrator_url,
+            runs_dir = runs_dir,
+            model = model,
+            timeout_s = timeout_s,
+            verbose = verbose,
+            target_host = target_host,
+        )
     await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
     records = _records_in_window(runs_dir, window_start, time.time() + 5)
     gaps_s =_log_run_gaps(records)
-    _write_attempt(path, scenario_id, seed, inject_s, records, gaps_s)
+    _write_attempt(
+        path, scenario_id, seed, inject_s, records, gaps_s, detection_used
+    )
     log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
     return path

@@ -1343,9 +1343,39 @@ def test_write_attempt_persists_window_runs_and_lock_gaps(tmp_path: Path) -> Non
         "scenario": "cross-pair-1",
         "seed": 2,
         "primary_run_id": "run-1",
+        "detection_used": "synthetic",
         "inject_s": 4.25,
         "n_runs": 2,
         "run_ids": ["run-1", "run-2"],
         "gaps_s": [90.0],
     }
     assert len(_records_in_window(tmp_path, 0.0, float("inf"))) == 2
+
+
+async def test_wait_for_alert_run_detects_trace_or_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from eval.harness import _wait_for_alert_run
+
+    now = _fake_loop_clock(monkeypatch)
+
+    async def fake_sleep(seconds: float) -> None:
+        now[0] += seconds
+    
+    monkeypatch.setattr(harness_mod.asyncio, "sleep", fake_sleep)
+
+    #1. Timeout when no alert arrived -> returns None triggering synthetic fallback
+    res = await _wait_for_alert_run(
+        tmp_path, since=0.0, per_try_s=10.0, detect_timeout_s=5.0
+    )
+    assert res is None
+
+    # 2. Real alert trace + record present -> follows and returns record path
+    (tmp_path / "alert-run_trace.jsonl").write_text("{}\n")
+    (tmp_path / "alert-run.json").write_text(
+        json.dumps({"run_id": "alert-run", "retry_queued": False, "started_at": "2026-11-15T10:00:00Z"})
+    )
+    found = await _wait_for_alert_run(
+        tmp_path, since=0.0, per_try_s=10.0, detect_timeout_s=5.0
+    )
+    assert found == tmp_path / "alert-run.json"
