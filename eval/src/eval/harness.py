@@ -22,6 +22,7 @@ from orchestrator.models import RunRecord
 _HARNESS_WAIT_BUFFER_S = 300
 _RESULT_POLL_INTERVAL_S = 2
 _WAIT_LOG_INTERVAL_S = 30
+DEFAULT_TIMEOUT_S = 600.0
 DEFAULT_ORCHESTRATOR_URL = "http://localhost:9099"
 DEFAULT_EVAL_BRANCH = "chore/eval-cluster-baseline"
 BASELINE_KUSTOMIZATIONS = ("cluster-apps", "cluster-infrastructure")
@@ -742,7 +743,7 @@ async def _wait_for_record(
 
 
 def _ts(record: dict) -> float | None:
-    """started_at as a POSIX timestamp, None when missing or not parseable"""
+    """converts started_at to a POSIX timestamp, None when missing or not parseable"""
     raw = record.get("started_at")
     if not raw: 
         return None
@@ -779,6 +780,39 @@ def _log_run_gaps(records: list[dict]) -> None:
             continue
         gap_s = cur_ts - prev_ts
         log.info("gap %s -> %s: %.1fs", prev.get("run_id"), cur.get("run_id"), gap_s)
+
+
+def _in_flight_traces(runs_dir: Path, since: float) -> list[str]:
+    """Return active runs that have a recent _trace.jsonl but no final.json"""
+    active: list[str] = []
+    for trace_path in sorted(runs_dir.glob("*_trace.jsonl")):
+        try:
+            if trace_path.stat().st_mtime < since:
+                continue
+        except OSError:
+            continue
+        run_id = trace_path.name.removesuffix("_trace.jsonl")
+        if not (runs_dir / f"{run_id}.json").exists():
+            active.append(run_id)
+    return active
+
+
+async def _wait_for_drain(
+    runs_dir: Path,
+    since: float,
+    timeout_s: float = DEFAULT_TIMEOUT_S,
+) -> None:
+    """Wait until every inflight run in window has written .json"""
+    started = asyncio.get_event_loop().time()
+    while True:
+        active = _in_flight_traces(runs_dir, since)
+        if not active:
+            return
+        if asyncio.get_event_loop().time() - started >= timeout_s:
+            log.warning("drain timeout with remaining active runs: %s", active)
+            return
+        log.info("waiting for queued run(s) to finish: %s", active)
+        await asyncio.sleep(_RESULT_POLL_INTERVAL_S)
 
 
 async def trigger_and_wait(
@@ -938,6 +972,7 @@ async def run_one(
         verbose=verbose,
         target_host=target_host,
     )
+    await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
     records = _records_in_window(runs_dir, window_start, time.time() + 5)
     _log_run_gaps(records)
     log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))

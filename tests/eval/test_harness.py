@@ -1304,3 +1304,24 @@ def test_records_in_window_filters_and_orders_by_started_at(tmp_path: Path) -> N
 
     found = _records_in_window(tmp_path, since, until)
     assert [r["run_id"] for r in found] == ["run-1", "run-2"]
+
+
+async def test_wait_for_drain_polls_until_trace_has_matching_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from eval.harness import _wait_for_drain
+
+    trace_file = tmp_path / "run-2_trace.jsonl"
+    record_file = tmp_path / "run-2.json"
+    trace_file.write_text("{}\n")
+    polls = 0
+
+    async def fake_sleep(_seconds: float) -> None:
+        nonlocal polls
+        polls += 1
+        record_file.write_text(json.dumps({"run_id": "run-2"}))
+
+    monkeypatch.setattr(harness_mod.asyncio, "sleep", fake_sleep)
+
+    await _wait_for_drain(tmp_path, since=0.0, timeout_s=30.0)
+    assert polls == 1
