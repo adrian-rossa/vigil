@@ -770,16 +770,44 @@ def _records_in_window(runs_dir: Path, since: float, until: float) -> list[dict]
     return sorted(found, key=lambda r: r.get("started_at") or "")
 
 
-def _log_run_gaps(records: list[dict]) -> None:
-    """Log n_runs and the start-to-start gaps (= RUN_LOCK waiting time)"""
+def _log_run_gaps(records: list[dict]) -> list[float]:
+    """Log n_runs and Return start-to-start gaps (=RUN_LOCK waiting time)"""
     log.info("window contains %d run(s)", len(records))
+    gaps: list[float] = []
     for prev, cur in zip(records, records[1:]):
         prev_ts, cur_ts = _ts(prev), _ts(cur)
         if prev_ts is None or cur_ts is None:
             log.info("gap %s -> %s: unknown", prev.get("run_id"), cur.get("run_id"))
             continue
-        gap_s = cur_ts - prev_ts
+        gap_s = round(cur_ts - prev_ts, 3)
+        gaps.append(gap_s)
         log.info("gap %s -> %s: %.1fs", prev.get("run_id"), cur.get("run_id"), gap_s)
+    return gaps
+
+
+def _write_attempt(
+    path: Path,
+    scenario_id: str,
+    seed: int,
+    inject_s: float,
+    records: list[dict],
+    gaps_s: list[float],
+) -> Path: 
+    """Persist attempt-level metadata next to the primary run record"""
+    attempt_path = path.with_name(f"{path.stem}_attempt.json")
+    attempt_path.parent.mkdir(parents=True, exist_ok=True)
+    run_ids = [str(r["run_id"]) for r in records if r.get("run_id")]
+    payload = {
+        "scenario": scenario_id,
+        "seed": seed,
+        "primary_run_id": path.stem,
+        "inject_s": round(inject_s, 3),
+        "n_runs": len(records),
+        "run_ids": run_ids,
+        "gaps_s": gaps_s,
+    }
+    attempt_path.write_text(json.dumps(payload, indent=2) + "\n")
+    return attempt_path
 
 
 def _in_flight_traces(runs_dir: Path, since: float) -> list[str]:
@@ -974,6 +1002,7 @@ async def run_one(
     )
     await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
     records = _records_in_window(runs_dir, window_start, time.time() + 5)
-    _log_run_gaps(records)
+    gaps_s =_log_run_gaps(records)
+    _write_attempt(path, scenario_id, seed, inject_s, records, gaps_s)
     log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
     return path

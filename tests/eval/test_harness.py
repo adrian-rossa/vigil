@@ -1325,3 +1325,27 @@ async def test_wait_for_drain_polls_until_trace_has_matching_record(
 
     await _wait_for_drain(tmp_path, since=0.0, timeout_s=30.0)
     assert polls == 1
+
+
+def test_write_attempt_persists_window_runs_and_lock_gaps(tmp_path: Path) -> None:
+    from eval.harness import _log_run_gaps, _records_in_window, _write_attempt
+    records = [
+        {"run_id": "run-1", "started_at": "2026-11-15T10:01:00Z"},
+        {"run_id": "run-2", "started_at": "2026-11-15T10:02:30Z"},
+    ]
+    primary = tmp_path / "run-1.json"
+    primary.write_text(json.dumps(records[0]))
+    (tmp_path / "run-2.json").write_text(json.dumps(records[1]))
+    gaps_s = _log_run_gaps(records)
+    attempt_file = _write_attempt(primary, "cross-pair-1", 2, 4.25, records, gaps_s)
+    saved = json.loads(attempt_file.read_text())
+    assert saved == {
+        "scenario": "cross-pair-1",
+        "seed": 2,
+        "primary_run_id": "run-1",
+        "inject_s": 4.25,
+        "n_runs": 2,
+        "run_ids": ["run-1", "run-2"],
+        "gaps_s": [90.0],
+    }
+    assert len(_records_in_window(tmp_path, 0.0, float("inf"))) == 2
