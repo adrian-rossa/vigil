@@ -1373,9 +1373,57 @@ async def test_wait_for_alert_run_detects_trace_or_times_out(
     # 2. Real alert trace + record present -> follows and returns record path
     (tmp_path / "alert-run_trace.jsonl").write_text("{}\n")
     (tmp_path / "alert-run.json").write_text(
-        json.dumps({"run_id": "alert-run", "retry_queued": False, "started_at": "2026-11-15T10:00:00Z"})
+        json.dumps({
+            "run_id": "alert-run", 
+            "retry_queued": False, 
+            "started_at": "2026-11-15T10:00:00Z"
+            })
     )
     found = await _wait_for_alert_run(
         tmp_path, since=0.0, per_try_s=10.0, detect_timeout_s=5.0
     )
     assert found == tmp_path / "alert-run.json"
+
+
+    def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from eval.harness import _probe_passes
+
+        kubectl_calls: list[list[str]] = []
+
+        def fake_kubectl(args: list[str], kubeconfig: str | None = None) -> MagicMock:
+            kubectl_calls.append(args)
+            res = MagicMock(returncode=0, stdout="")
+            if args[0] == "get" and args[1] == "deployment":
+                res.stdout = json.dumps(
+                    {"spec": {"replicas": 2}, "status": {"availableReplicas": 2}}
+                )
+            return res
+
+        monkeypatch.setattr(harness_mod, "_kubectl", fake_kubectl)
+        monkeypatch.setattr(
+            harness_mod,
+            "_ssh",
+            lambda host, cmd: MagicMock(returncode=0, stdout="1\n"),
+        )
+
+        assert _probe_passes(
+            {"kind": "http_ok", "url": "http://vigil-app.default.svc:8080/healthz"}
+        )
+        assert kubectl_calls[0] == [
+            "get",
+            "--raw",
+            "/api/v1/namespaces/default/services/vigil-app:8080/proxy/healthz",
+        ]
+        assert _probe_passes(
+            {"kind": "kube_condition", "resource": "deployment/vigil-app"}
+        )
+        assert _probe_passes(
+            {
+                "kind": "host_cmd",
+                "host": "vigil-worker-1",
+                "command": "cat /proc/sys/net/ipv4/ip_forward",
+                "expect": 1,
+            }
+        )

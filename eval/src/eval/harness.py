@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import yaml
@@ -234,15 +235,34 @@ _SYMPTOM_CHECKS = {
 }
 
 
+def _svc_proxy_path(url: str) -> str | None:
+    """Convert http://<svc>.<ns>.svc[:<port>]/<path> to a k8s API proxy path"""
+    if url.startswith("/api/v1/namespaces/"):
+        return url
+    parsed = urlsplit(url)
+    parts = (parsed.hostname or "").split(".")
+    if len(parts) < 3 or parts[2] != "svc":
+        return None
+    svc, ns = parts[0], parts[1]
+    port = parsed.port or 80
+    subpath = parsed.path.lstrip("/")
+    return f"/api/v1/namespaces/{ns}/services/{svc}:{port}/proxy/{subpath}"
+    
+
 def _probe_passes(probe: dict, kubeconfig: str | None = None) -> bool:
     """True when the faults declared healthy state is positively observed"""
     kind = probe.get("kind")
 
     if kind == "http_ok":
+        url = str(probe["url"])
+        proxy_path = _svc_proxy_path(url)
+        if proxy_path is not None:
+            r = _kubectl(["get", "--raw", proxy_path], kubeconfig)
+            return r.returncode == 0
         r = subprocess.run(
             [
                 "curl", "-sf", "-o", "/dev/null", "-w", "%{http_code}",
-                "--max-time", "10", str(probe["url"]),
+                "--max-time", "10", url,
             ],
             capture_output=True, text=True, check=False,
         )
