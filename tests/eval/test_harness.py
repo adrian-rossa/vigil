@@ -935,7 +935,7 @@ def _fake_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         harness_mod,
         "time",
-        SimpleNamespace(monotonic=lambda: now[0], sleep=sleep),
+        SimpleNamespace(monotonic=lambda: now[0], time=lambda: now[0], sleep=sleep),
     )
 
 

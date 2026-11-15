@@ -622,7 +622,9 @@ def _build_fault_event(
                 "status": "firing",
                 "labels": labels,
                 "annotations": {"summary": f"{alert_name} firing"},
-                "startsAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "startsAt": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
                 "endsAt": "",
                 "generatorURL": "",
                 "fingerprint": _alert_fingerprint(labels),
@@ -737,6 +739,46 @@ async def _wait_for_record(
         stop.set()
         if tail is not None:
             await tail
+
+
+def _ts(record: dict) -> float | None:
+    """started_at as a POSIX timestamp, None when missing or not parseable"""
+    raw = record.get("started_at")
+    if not raw: 
+        return None
+    try:
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _records_in_window(runs_dir: Path, since: float, until: float) -> list[dict]:
+    """Every RunRecord whose started_at falls inside test time window"""
+    found: list[dict] = []
+    for path in sorted(runs_dir.glob("*.json")):
+        try:
+            rec = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        started = rec.get("started_at")
+        if not started:
+            continue
+        ts = _ts(rec)
+        if ts and since <= ts <= until:
+            found.append(rec)
+    return sorted(found, key=lambda r: r.get("started_at") or "")
+
+
+def _log_run_gaps(records: list[dict]) -> None:
+    """Log n_runs and the start-to-start gaps (= RUN_LOCK waiting time)"""
+    log.info("window contains %d run(s)", len(records))
+    for prev, cur in zip(records, records[1:]):
+        prev_ts, cur_ts = _ts(prev), _ts(cur)
+        if prev_ts is None or cur_ts is None:
+            log.info("gap %s -> %s: unknown", prev.get("run_id"), cur.get("run_id"))
+            continue
+        gap_s = cur_ts - prev_ts
+        log.info("gap %s -> %s: %.1fs", prev.get("run_id"), cur.get("run_id"), gap_s)
 
 
 async def trigger_and_wait(
@@ -856,6 +898,7 @@ async def run_one(
     _reset_circuit_breaker()
     log.info("running inject.sh for %s", scenario_id)
     head_before = _repo_head()
+    window_start = time.time() - 5
     inject_start = time.monotonic()
     _run_script(inject_sh, seed, verbose=verbose)
     inject_s = time.monotonic() - inject_start
@@ -885,7 +928,7 @@ async def run_one(
         log.error("inject-assert failed for %s: %s", scenario_id, exc)
         return _emit_inject_failed_record(scenario_id, seed, model, str(exc), runs_dir)
 
-    return await trigger_and_wait(
+    path = await trigger_and_wait(
         scenario_id=scenario_id,
         seed=seed,
         orchestrator_url=orchestrator_url,
@@ -895,3 +938,7 @@ async def run_one(
         verbose=verbose,
         target_host=target_host,
     )
+    records = _records_in_window(runs_dir, window_start, time.time() + 5)
+    _log_run_gaps(records)
+    log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
+    return path
