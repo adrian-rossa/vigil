@@ -1285,3 +1285,22 @@ async def test_trigger_and_wait_removes_stale_retry_records_and_traces(
 
     assert await _wait(tmp_path) == stale[0]
     assert not any(seen_on_first_poll)
+
+
+def test_records_in_window_filters_and_orders_by_started_at(tmp_path: Path) -> None:
+    from eval.harness import _records_in_window, _ts
+
+    r_early = {"run_id": "early", "started_at": "2026-11-15T10:00:00Z"}
+    r_first = {"run_id": "run-1", "started_at": "2026-11-15T10:01:00Z"}
+    r_second = {"run_id": "run-2", "started_at": "2026-11-15T10:02:30Z"}
+    r_late = {"run_id": "late", "started_at": "2026-11-15T10:10:00Z"}
+
+    for rec in (r_late, r_second, r_early, r_first):
+        (tmp_path / f"{rec['run_id']}.json").write_text(json.dumps(rec))
+
+    since = _ts({"started_at": "2026-11-15T10:00:55Z"})
+    until = _ts({"started_at": "2026-11-15T10:03:00Z"})
+    assert since is not None and until is not None
+
+    found = _records_in_window(tmp_path, since, until)
+    assert [r["run_id"] for r in found] == ["run-1", "run-2"]
