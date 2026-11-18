@@ -1385,45 +1385,103 @@ async def test_wait_for_alert_run_detects_trace_or_times_out(
     assert found == tmp_path / "alert-run.json"
 
 
-    def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
-        monkeypatch: pytest.MonkeyPatch,
+def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eval.harness import _probe_passes
+
+    kubectl_calls: list[list[str]] = []
+
+    def fake_kubectl(args: list[str], kubeconfig: str | None = None) -> MagicMock:
+        kubectl_calls.append(args)
+        res = MagicMock(returncode=0, stdout="")
+        if args[0] == "get" and args[1] == "deployment":
+            res.stdout = json.dumps(
+                {"spec": {"replicas": 2}, "status": {"availableReplicas": 2}}
+            )
+        return res
+
+    monkeypatch.setattr(harness_mod, "_kubectl", fake_kubectl)
+    monkeypatch.setattr(
+        harness_mod,
+        "_ssh",
+        lambda host, cmd: MagicMock(returncode=0, stdout="1\n"),
+    )
+
+    assert _probe_passes(
+        {"kind": "http_ok", "url": "http://vigil-app.default.svc:8080/healthz"}
+    )
+    assert kubectl_calls[0] == [
+        "get",
+        "--raw",
+        "/api/v1/namespaces/default/services/vigil-app:8080/proxy/healthz",
+    ]
+    assert _probe_passes(
+        {"kind": "kube_condition", "resource": "deployment/vigil-app"}
+    )
+    assert _probe_passes(
+        {
+            "kind": "host_cmd",
+            "host": "vigil-worker-1",
+            "command": "cat /proc/sys/net/ipv4/ip_forward",
+            "expect": 1,
+        }
+    )
+
+
+    async def test_trigger_and_wait_multi_fault_omits_seed_and_posts_per_fault(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from eval.harness import _probe_passes
+        monkeypatch.setenv("VIGIL_WEBHOOK_SECRET", "s")
+        posted_params: list[dict] = []
+        run_ids = ["pair-run-a", "pair-run-b"]
 
-        kubectl_calls: list[list[str]] = []
+        class FakeOrchestrator:
+            async def __aenter__(self):
+                return self
 
-        def fake_kubectl(args: list[str], kubeconfig: str | None = None) -> MagicMock:
-            kubectl_calls.append(args)
-            res = MagicMock(returncode=0, stdout="")
-            if args[0] == "get" and args[1] == "deployment":
-                res.stdout = json.dumps(
-                    {"spec": {"replicas": 2}, "status": {"availableReplicas": 2}}
+            async def __aexit__(self, *args):
+                pass
+
+            async def get(self, url, **kwargs):
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock()
+                resp.json = MagicMock(return_value={
+                    "status": "ok", "run_timeout_s": 60.0})
+                return resp
+
+            async def post(self, url, **kwargs):
+                posted_params.append(dict(kwargs.get("params") or {}))
+                rid = run_ids[len(posted_params) - 1]
+                resp = MagicMock()
+                resp.raise_for_status = MagicMock()
+                resp.json = MagicMock(return_value={"run_id": rid})
+                return resp
+
+        pending = list(run_ids)
+
+        async def fake_sleep(_seconds: float) -> None:
+            if pending:
+                rid = pending.pop(0)
+                (tmp_path / f"{rid}.json").write_test(
+                    json.dumps({"run_id": rid, "retry_queued": False})
                 )
-            return res
 
-        monkeypatch.setattr(harness_mod, "_kubectl", fake_kubectl)
-        monkeypatch.setattr(
-            harness_mod,
-            "_ssh",
-            lambda host, cmd: MagicMock(returncode=0, stdout="1\n"),
-        )
+        monkeypatch.setattr(harness_mod.httpx, "AsyncClient", FakeOrchestrator)
+        monkeypatch.setattr(harness_mod.asyncio, "sleep", fake_sleep)
 
-        assert _probe_passes(
-            {"kind": "http_ok", "url": "http://vigil-app.default.svc:8080/healthz"}
-        )
-        assert kubectl_calls[0] == [
-            "get",
-            "--raw",
-            "/api/v1/namespaces/default/services/vigil-app:8080/proxy/healthz",
+        faults = [
+            {"id": "a", "alert_name": "KubePodCrashLooping"},
+            {"id": "b", "alert_name": "KubePodNotReady"},
         ]
-        assert _probe_passes(
-            {"kind": "kube_condition", "resource": "deployment/vigil-app"}
+        res = await trigger_and_wait(
+            scenario_id="k8s-pair-1",
+            seed=1,
+            orchestrator_url="http://localhost:9099",
+            runs_dir=tmp_path,
+            model="test-model",
+            faults=faults,
         )
-        assert _probe_passes(
-            {
-                "kind": "host_cmd",
-                "host": "vigil-worker-1",
-                "command": "cat /proc/sys/net/ipv4/ip_forward",
-                "expect": 1,
-            }
-        )
+        assert res == tmp_path / "pair-run-a.json"
+        assert len(posted_params) == 2
+        assert all("seed" not in p for p in posted_params)

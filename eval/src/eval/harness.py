@@ -611,12 +611,26 @@ def _alert_fingerprint(labels: dict[str, str]) -> str:
 
 
 def _build_fault_event(
-    scenario_id: str, target_host: str | None = None
+    scenario_id: str, 
+    target_host: str | None = None,
+    fault: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     kubeconfig = os.environ.get("EVAL_RUNNER_KUBECONFIG") or None
     scenario = _load_scenario(scenario_id)
-    alert_name = scenario.get("alert_name") or _DEFAULT_ALERT_NAME
-    inject_params: dict[str, Any] = scenario.get("inject_params") or {}
+    source = fault if fault is not None else scenario
+    alert_name = (
+        source.get("alert_name")
+        or scenario.get("alert_name")
+        or _DEFAULT_ALERT_NAME
+    )
+    inject_params: dict[str, Any] = (
+        source.get("inject_params") or scenario.get("inject_params") or {}
+    )
+    host = (
+        target_host or (fault.get("inject_params") or {}).get("target_host")
+        if fault is not None
+        else target_host
+    )
     labels: dict[str, str] = {"alertname": alert_name}
 
     if alert_name in _POD_SCOPED_ALERTS:
@@ -634,8 +648,8 @@ def _build_fault_event(
             if key in inject_params:
                 labels[key] = str(inject_params[key])
 
-    if target_host:
-        labels["node"] = target_host
+    if host:
+        labels["node"] = str(host)
     return {
         "receiver": "vigil-webhook",
         "status": "firing",
@@ -900,7 +914,7 @@ async def _wait_for_alert_run(
     while True:
         run_id = _detected_run_id(runs_dir, since)
         if run_id is not None:
-            log.info("detected real alert run_", run_id)
+            log.info("detected real alert run_id %s", run_id)
             return await _follow_run(runs_dir, run_id, per_try_s, verbose)
         if asyncio.get_event_loop().time() - started >= detect_timeout_s:
             log.warning(
@@ -920,37 +934,54 @@ async def trigger_and_wait(
     timeout_s: int | None = None,
     verbose: bool = False,
     target_host: str | None = None,
+    faults: list[dict[str, Any]] | None = None,
 ) -> Path:
     webhook_secret = os.environ.get("VIGIL_WEBHOOK_SECRET", "")
     if not webhook_secret:
         raise ValueError("VIGIL_WEBHOOK_SECRET is not set")
-    fault_event = _build_fault_event(scenario_id, target_host=target_host)
+    multi = faults is not None and len(faults) > 1
+    events = (
+        [
+            _build_fault_event(scenario_id, target_host=target_host, fault=f)
+            for f in faults
+        ]
+        if multi and faults
+        else [_build_fault_event(scenario_id, target_host=target_host)]
+    )
+    params: dict[str, Any] = {"scenario": scenario_id, "model": model}
+    if not multi:
+        params["seed"] = seed
+    
+    run_ids: list[str] = []
     async with httpx.AsyncClient() as client:
         run_timeout_s = await _healthz_check(client, orchestrator_url)
-        log.info("triggering orchestrator webhook for %s", scenario_id)
-        resp = await client.post(
-            f"{orchestrator_url}/webhook",
-            params={"scenario": scenario_id, "seed": seed, "model": model},
-            json=fault_event,
-            headers={"Authorization": f"Bearer {webhook_secret}"},
-            timeout=720,
-        )
-        resp.raise_for_status()
-        run_id = resp.json()["run_id"]
+        for fault_event in events:
+            log.info("triggering orchestrator webhook for %s", scenario_id)
+            resp = await client.post(
+                f"{orchestrator_url}/webhook",
+                params=params,
+                json=fault_event,
+                headers={"Authorization": f"Bearer {webhook_secret}"},
+                timeout=720,
+            )
+            resp.raise_for_status()
+            run_ids.append(resp.json()["run_id"])
 
     per_try_s = (
         timeout_s
         if timeout_s is not None
         else run_timeout_s + SHUTDOWN_DRAIN_S + _HARNESS_WAIT_BUFFER_S
     )
-    log.info("run_id=%s - polling for result", run_id)
-    (runs_dir / f"{run_id}.json").unlink(missing_ok=True)
-    for try_number in range(2, MAX_TRIES + 1):
-        stale = retry_run_id(run_id, try_number)
-        (runs_dir / f"{stale}.json").unlink(missing_ok=True)
-        (runs_dir / f"{stale}_trace.jsonl").unlink(missing_ok=True)
+    for rid in run_ids:
+        log.info("run_id=%s - polling for result", rid)
+        (runs_dir / f"{rid}.json").unlink(missing_ok=True)
+        for try_number in range(2, MAX_TRIES + 1):
+            stale = retry_run_id(rid, try_number)
+            (runs_dir / f"{stale}.json").unlink(missing_ok=True)
+            (runs_dir / f"{stale}_trace.jsonl").unlink(missing_ok=True)
 
-    return await _follow_run(runs_dir, run_id, per_try_s, verbose)
+    paths = [await _follow_run(runs_dir, rid, per_try_s, verbose) for rid in run_ids]
+    return paths[0]
 
 
 async def run_one(
@@ -1033,18 +1064,24 @@ async def run_one(
     verify_broken: dict | None = None
     detection = "synthetic"
     scenario_yaml = scenarios_dir / scenario_id / "scenario.yaml"
+    faults: list[dict[str, Any]] = []
     if scenario_yaml.exists():
         with scenario_yaml.open() as f:
             data = yaml.safe_load(f)
         target_host = (data.get("inject_params") or {}).get("target_host")
         verify_broken = data.get("verify_broken") or None
+        faults = list(data.get("faults") or [])
         detection = str(data.get("detection") or "synthetic")
+
+    verify_checks = [verify_broken] if verify_broken else []
+    verify_checks.extend(f["verify_broken"] for f in faults if f.get("verify_broken"))
 
     try:
         if head_before and head_after and head_after != head_before:
             _wait_for_flux_uptake(scenario_id, head_after)
-        if verify_broken:
-            _wait_for_inject_symptom(scenario_id, verify_broken, scenarios_dir)
+        if verify_checks:
+            for check in verify_checks:
+                _wait_for_inject_symptom(scenario_id, check, scenarios_dir)
         else:
             log.warning(
                 "no verify_broken block for %s - skipping inject assertion",
@@ -1075,6 +1112,7 @@ async def run_one(
             timeout_s = timeout_s,
             verbose = verbose,
             target_host = target_host,
+            faults = faults or None,
         )
     await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
     records = _records_in_window(runs_dir, window_start, time.time() + 5)
