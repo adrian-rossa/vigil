@@ -35,8 +35,9 @@ jobs:
       - name: Compute diff files
         id: diff
         run: |
-          FILES=$(git diff --name-only --diff-filter=d origin/main...HEAD \
-            | grep '\.yaml$' \
+          FILES=$(git diff --name-only --diff-filter=d "origin/${BASE_REF}...HEAD" \
+            | grep '^infra/.*\.yaml$' \
+            | grep -v '/values-[^/]*\.yaml$' \
             | tr '\n' ' ')
           echo "files=$FILES" >> "$GITHUB_OUTPUT"
 
