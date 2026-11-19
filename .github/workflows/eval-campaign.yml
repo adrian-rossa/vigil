@@ -300,7 +300,7 @@ jobs:
           TF_VAR_github_app_private_key: ${{ secrets.VIGIL_APP_PRIVATE_KEY }}
           TF_VAR_harness_app_client_id: ${{ secrets.VIGIL_HARNESS_APP_CLIENT_ID }}
           TF_VAR_harness_app_private_key: ${{ secrets.VIGIL_HARNESS_APP_PRIVATE_KEY }}
-          TF_VAR_llm_model_name: ${{ secrets.TF_VAR_LLM_MODEL_NAME }}
+          TF_VAR_llm_model_name: ${{ inputs.model || secrets.TF_VAR_LLM_MODEL_NAME }}
           TF_VAR_operator_ssh_pubkey: ${{ secrets.OPERATOR_SSH_PUBKEY }}
           TF_VAR_anthropic_api_key: ${{ startsWith(inputs.model, 'claude-') && secrets.TF_VAR_ANTHROPIC_API_KEY || '' }}
           TF_VAR_ollama_api_key: ${{ !startsWith(inputs.model, 'claude-') && secrets.TF_VAR_OLLAMA_API_KEY || '' }}
@@ -385,7 +385,7 @@ jobs:
           VIGIL_APP_PRIVATE_KEY: ${{ secrets.VIGIL_APP_PRIVATE_KEY }}
           VIGIL_HARNESS_APP_CLIENT_ID: ${{ secrets.VIGIL_HARNESS_APP_CLIENT_ID }}
           VIGIL_HARNESS_APP_PRIVATE_KEY: ${{ secrets.VIGIL_HARNESS_APP_PRIVATE_KEY }}
-          LLM_MODEL_NAME: ${{ secrets.TF_VAR_LLM_MODEL_NAME }}
+          LLM_MODEL_NAME: ${{ inputs.model || secrets.TF_VAR_LLM_MODEL_NAME }}
           ANTHROPIC_API_KEY: ${{ startsWith(inputs.model, 'claude-') && secrets.TF_VAR_ANTHROPIC_API_KEY || '' }}
           OLLAMA_API_KEY: ${{ !startsWith(inputs.model, 'claude-') && secrets.TF_VAR_OLLAMA_API_KEY || '' }}
           OLLAMA_BASE_URL: ${{ !startsWith(inputs.model, 'claude-') && secrets.TF_VAR_OLLAMA_BASE_URL || '' }}
