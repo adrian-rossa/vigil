@@ -326,3 +326,4 @@ def test_multi_fault_scenario_keeps_faults_and_probe(
     assert len(scenarios.faults) == 2
     assert scenarios.faults[0].health_probe.window_s == 300
     assert scenarios.faults[1].severity == "internal"
+    assert scenarios.faults[1].health_probe.condition == "Available"

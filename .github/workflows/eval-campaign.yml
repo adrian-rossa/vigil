@@ -12,6 +12,7 @@ on:
           - "1"
           - "2"
           - "3"
+          - "5"
       model:
         description: "LLM model identifier"
         type: choice
@@ -62,6 +63,11 @@ on:
         type: string
         required: false
         default: "main"
+      scenarios:
+        description: "Optional space-separated scenario IDs to run instead of default groups (e.g k8s-pair-1)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -82,16 +88,21 @@ jobs:
         env:
           SKIP_K8S: ${{ inputs.skip_k8s }}
           SKIP_OS: ${{ inputs.skip_os }}
+          SCENARIOS: ${{ inputs.scenarios }}
           SEED_COUNT: ${{ inputs.seed_count }}
           PARALLEL: ${{ inputs.parallel }}
           TARGET: ${{ inputs.target }}
         run: |
           base='[]'
-          if [ "$SKIP_K8S" != 'true' ]; then
-            base=$(echo "$base" | jq -c '. + [{"group":"k8s","scenarios":"k8s-1g k8s-2g k8s-3g k8s-4g k8s-5g live-quota-injected deceptive-2 k8s-rollback-1"}]')
-          fi
-          if [ "$SKIP_OS" != 'true' ]; then
-            base=$(echo "$base" | jq -c '. + [{"group":"os","scenarios":"os-1 os-1g os-drift-sysctl os-stale-generation disk-pressure"}]')
+          if [ -n "$SCENARIOS" ]; then
+            base=$(jq -cn --arg s "$SCENARIOS" '[{"group":"cross","scenarios":$s}]')
+          else
+            if [ "$SKIP_K8S" != 'true' ]; then
+              base=$(echo "$base" | jq -c '. + [{"group":"k8s","scenarios":"k8s-1g k8s-2g k8s-3g k8s-4g k8s-5g live-quota-injected deceptive-2 k8s-rollback-1"}]')
+            fi
+            if [ "$SKIP_OS" != 'true' ]; then
+              base=$(echo "$base" | jq -c '. + [{"group":"os","scenarios":"os-1 os-1g os-drift-sysctl os-stale-generation disk-pressure"}]')
+            fi
           fi
           seeds=$(jq -cn --argjson n "$SEED_COUNT" '[range(1; $n + 1)]')
           include=$(jq -cn --argjson base "$base" --argjson seeds "$seeds" \

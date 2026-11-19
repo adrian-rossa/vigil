@@ -16,6 +16,7 @@ class HealthProbe(BaseModel):
     expect: str | int | None = None
     resource: str | None = None
     namespace: str | None = None
+    condition: str | None = None
     host: str | None = None
     command: str | None = None
 
@@ -23,10 +24,14 @@ class HealthProbe(BaseModel):
 class FaultSpec(BaseModel):
     id: str
     component: str
+    manifest: str | None = None
+    expected_action: str | None = None
+    root_cause_keywords: list[str] = Field(default_factory=list)
     severity: Literal["user_facing", "internal"] = "user_facing"
     health_probe: HealthProbe
     inject_params: dict[str, Any] = Field(default_factory=dict)
     alert_name: str | None = None
+    verify_broken: dict[str, Any] | None = None
 
 
 class WorkloadSpec(BaseModel):
