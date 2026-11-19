@@ -48,3 +48,19 @@ alertmanager:
         equal:
           - namespace
           - alertname
+
+additionalPrometheusRulesMap:
+  vigil-fault-alerts:
+    groups:
+      - name: vigil.faults
+        rules:
+          - alert: KubeContainerOOMKilled
+            expr: |
+              increase(kube_pod_container_status_restarts_total[5m]) > 0
+                and on (namespace, pod, container)
+              kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
