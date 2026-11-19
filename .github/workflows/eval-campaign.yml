@@ -426,16 +426,16 @@ jobs:
               SAFE_MODEL=$(printf '%s' "$MODEL" | tr -c 'a-zA-Z0-9_-' '-')
               PREV_RUN_ID="${PREV}_${SEED}_${SAFE_MODEL}_${SHA7}"
               echo "::group::between-scenarios prev=$PREV next=$S"
-              printf -v REMOTE 'AGENT_HOST=%q PREV_RUN_ID=%q bash eval/scripts/between-scenarios.sh %q %q' \
-                "$AGENT_PRIVATE_IP" "$PREV_RUN_ID" "$PREV" "$GROUP"
+              printf -v REMOTE 'SERIES_REF=%q AGENT_HOST=%q PREV_RUN_ID=%q bash eval/scripts/between-scenarios.sh %q %q' \
+                "$SERIES_REF" "$AGENT_PRIVATE_IP" "$PREV_RUN_ID" "$PREV" "$GROUP"
               eval/scripts/agent-exec.sh "$REMOTE" \
                 || echo "between-scenarios returned non-zero"
               echo "::endgroup::"
             fi
             echo "::group::scenario $S"
             VIGIL_EVAL_STATUS=0
-            printf -v REMOTE 'vigil-eval run --scenario %q --seed %q --model %q' \
-              "$S" "$SEED" "$MODEL"
+            printf -v REMOTE 'SERIES_REF=%q vigil-eval run --scenario %q --seed %q --model %q' \
+              "$SERIES_REF" "$S" "$SEED" "$MODEL"
             eval/scripts/agent-exec.sh "$REMOTE" \
               || VIGIL_EVAL_STATUS=$?
             echo "::endgroup::"
