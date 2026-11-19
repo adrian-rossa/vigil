@@ -1,0 +1,25 @@
+{
+  "scenario": "k8s-pair-1",
+  "seed": 1,
+  "primary_run_id": "k8s-pair-1_seed-20261119T153956Z-6e608b4a_gpt-oss-120b_7d56557-try-2",
+  "detection_used": "synthetic",
+  "inject_s": 69.706,
+  "n_runs": 7,
+  "run_ids": [
+    "k8s-pair-1_seed-20261119T153956Z-6e608b4a_gpt-oss-120b_7d56557",
+    "k8s-pair-1_seed-20261119T153956Z-ce2b17f8_gpt-oss-120b_7d56557",
+    "k8s-1_seed-20261119T154025Z-53ce043a_deepseek-v4-1-flash-1017-cloud_7d56557",
+    "k8s-1_seed-20261119T154025Z-a0a0dcfa_deepseek-v4-1-flash-1017-cloud_7d56557",
+    "k8s-1_seed-20261119T154105Z-86b8b7b2_deepseek-v4-1-flash-1017-cloud_7d56557",
+    "k8s-1_seed-20261119T154455Z-73354f00_deepseek-v4-1-flash-1017-cloud_7d56557",
+    "k8s-pair-1_seed-20261119T153956Z-6e608b4a_gpt-oss-120b_7d56557-try-2"
+  ],
+  "gaps_s": [
+    334.0,
+    14.0,
+    341.0,
+    340.0,
+    337.0,
+    340.0
+  ]
+}

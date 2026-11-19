@@ -1,0 +1,149 @@
+{
+  "by_model": {
+    "gpt-oss:120b": {
+      "n_runs": 2,
+      "n_attempts": 2,
+      "success_rate": 0.0,
+      "success_rate_given_attempt": 0.0,
+      "mean_MTTR_s": null,
+      "std_MTTR_s": null,
+      "diagnosis_accuracy": 0.0,
+      "diag_n": 2,
+      "destructive_repair_rate": 0.0,
+      "rollback_triggered_rate": 0.0,
+      "rollback_success_rate": null,
+      "n_eligible": 2,
+      "mean_input_tokens": 74675,
+      "mean_output_tokens": 1403,
+      "mean_tool_calls": 5,
+      "mean_iteration_count": 1
+    },
+    "deepseek-v4.1-flash:1017-cloud": {
+      "n_runs": 4,
+      "n_attempts": 4,
+      "success_rate": 0.0,
+      "success_rate_given_attempt": 0.0,
+      "mean_MTTR_s": null,
+      "std_MTTR_s": null,
+      "diagnosis_accuracy": null,
+      "diag_n": 0,
+      "destructive_repair_rate": 0.0,
+      "rollback_triggered_rate": 0.0,
+      "rollback_success_rate": null,
+      "n_eligible": 4,
+      "mean_input_tokens": 107219.75,
+      "mean_output_tokens": 2869.25,
+      "mean_tool_calls": 13.5,
+      "mean_iteration_count": 7
+    }
+  },
+  "by_scenario": {
+    "k8s-pair-1": {
+      "n_runs": 2,
+      "outcome": "escalated",
+      "setup_error": null,
+      "forbidden_action_violations": [],
+      "per_seed": [
+        {
+          "seed": "seed-20261119T153956Z-afbc71c8",
+          "outcome": "escalated",
+          "success_rate": false
+        },
+        {
+          "seed": "seed-20261119T154530Z-ef024081",
+          "outcome": "escalated",
+          "success_rate": false
+        }
+      ],
+      "passed": 0,
+      "n_seeds": 2,
+      "diag_correct": 0,
+      "diag_total": 2,
+      "success_rate": 0.0,
+      "mean_MTTR_s": null,
+      "std_MTTR_s": null,
+      "mean_iteration_count": 1,
+      "mean_tool_calls": 5
+    },
+    "k8s-1": {
+      "n_runs": 4,
+      "outcome": "gate_failed",
+      "setup_error": null,
+      "forbidden_action_violations": [],
+      "per_seed": [
+        {
+          "seed": "seed-20261119T154544Z-137db3ab",
+          "outcome": "gate_failed",
+          "success_rate": false
+        },
+        {
+          "seed": "seed-20261119T155125Z-e2eb5e69",
+          "outcome": "gate_failed",
+          "success_rate": false
+        },
+        {
+          "seed": "seed-20261119T155705Z-239d957b",
+          "outcome": "gate_failed",
+          "success_rate": false
+        },
+        {
+          "seed": "seed-20261119T160242Z-441a080a",
+          "outcome": "gate_failed",
+          "success_rate": false
+        }
+      ],
+      "passed": 0,
+      "n_seeds": 4,
+      "diag_correct": 0,
+      "diag_total": 0,
+      "success_rate": 0.0,
+      "mean_MTTR_s": null,
+      "std_MTTR_s": null,
+      "mean_iteration_count": 7,
+      "mean_tool_calls": 13.5
+    }
+  },
+  "escalation": {
+    "k8s-pair-1": {
+      "layer": "cross",
+      "accuracy": null
+    },
+    "k8s-1": {
+      "layer": null,
+      "accuracy": null
+    }
+  },
+  "run_buckets": {
+    "passed": 0,
+    "agent-failed": 6,
+    "infra-error": 0,
+    "gate-uncertain": 0,
+    "awaiting-review": 0,
+    "not-run": 8
+  },
+  "n_runs": 6,
+  "n_planned_runs": 14,
+  "scenarios_passing_all_seeds": 0,
+  "totals": {
+    "n": 6,
+    "n_models": 2,
+    "n_scenarios": 2
+  },
+  "planned_scenarios": [
+    "deceptive-2",
+    "disk-pressure",
+    "k8s-1g",
+    "k8s-2g",
+    "k8s-3g",
+    "k8s-4g",
+    "k8s-5g",
+    "k8s-pair-1",
+    "k8s-rollback-1",
+    "live-quota-injected",
+    "os-1",
+    "os-1g",
+    "os-drift-sysctl",
+    "os-stale-generation"
+  ],
+  "target": "hetzner"
+}
