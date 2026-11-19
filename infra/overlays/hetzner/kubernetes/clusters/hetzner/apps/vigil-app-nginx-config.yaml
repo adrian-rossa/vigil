@@ -8,10 +8,14 @@ data:
     server {
         listen 80;
         location = /healthz {
-            return 200 "ok\n";
+            proxy_pass ${REQUIRED_API_BASE};
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 2s;
             access_log off;
         }
         location / {
             proxy_pass ${REQUIRED_API_BASE};
+            proxy_connect_timeout 2s;
+            proxy_read_timeout 2s;
         }
     }

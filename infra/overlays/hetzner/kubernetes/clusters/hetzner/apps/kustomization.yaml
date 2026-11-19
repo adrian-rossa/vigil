@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - app-backend.yaml
   - vigil-app.yaml
+  - vigil-app-service.yaml
   - vigil-app-nginx-config.yaml
   - vigil-app-pullsecret.yaml
   - postgresql
