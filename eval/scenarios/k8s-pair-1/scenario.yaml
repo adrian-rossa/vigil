@@ -2,7 +2,7 @@ id: k8s-pair-1
 name: phase-1c-two-fault-smoke
 layer: cross
 relationship: independent
-detection: synthetic
+detection: alert
 root_cause_component: "vigil-app mem-load 32Mi OOM + vigil-worker-1 bridge-nf-call-iptables=0"
 expected_action: git_commit_k8s
 expected_resolution_path: "two sequential runs under _RUN_LOCK"
