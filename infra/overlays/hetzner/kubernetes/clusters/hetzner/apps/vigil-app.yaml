@@ -15,9 +15,13 @@ spec:
       labels:
         app: vigil-app
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: vigil-worker-1
       containers:
         - name: vigil-app
           image: nginx:stable
+          ports:
+            - containerPort: 80
           env:
             - name: REQUIRED_API_BASE
               value: "http://app-backend"
