@@ -17,9 +17,9 @@ on:
         description: "LLM model identifier"
         type: choice
         required: false
-        default: "claude-sonnet-4-6"
+        default: "deepseek-v4.1-flash:1017-cloud"
         options:
-          - claude-sonnet-4-6
+          - deepseek-v4.1-flash:1017-cloud
           - gpt-oss:120b
       location:
         description: "Hetzner EU region for the eval cluster"
