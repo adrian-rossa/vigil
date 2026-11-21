@@ -225,7 +225,9 @@ def _check_sysctl_modified(verify: dict, ns: str, kubeconfig: str | None) -> boo
     key = verify["key"]
     expected = str(verify["expected_value"])
     r = _ssh(host, f"sysctl -n {key}")
-    return r.returncode == 0 and r.stdout.strip() == expected
+    return r.returncode == 0 and " ".join(r.stdout.split()) == " ".join(
+        expected.split()
+    )
 
 
 _SYMPTOM_CHECKS = {
