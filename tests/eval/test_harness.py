@@ -1429,7 +1429,7 @@ def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
     )
 
 
-    async def test_trigger_and_wait_multi_fault_omits_seed_and_posts_per_fault(
+async def test_trigger_and_wait_multi_fault_omits_seed_and_posts_per_fault(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("VIGIL_WEBHOOK_SECRET", "s")
