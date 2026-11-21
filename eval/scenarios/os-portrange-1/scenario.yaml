@@ -1,0 +1,44 @@
+id: os-portrange-1
+name: ephemeral-port-range-exhaustion-under-load
+layer: cross
+relationship: single
+detection: alert
+workload:
+  enabled: true
+  mode: stepped
+  profile: [50, 200, 50]
+  ramp_s: 10
+root_cause_component: "net.ipv4.ip_local_port_range narrowed to 32000 32003 at runtime on vigil-worker-1 under stepped load"
+expected_action: nixos_rebuild
+expected_resolution_path: "diagnosis detects narrowed net.ipv4.ip_local_port_range on vigil-worker-1 vs declared NixOS sysctl, recommends nixos_rebuild, and restores 32768 60999"
+alert_name: KubePodNotReady
+root_cause_keywords: ["ip_local_port_range", "ephemeral", "port", "sysctl"]
+forbidden_actions: [git_commit_nix, git_commit_k8s]
+
+faults:
+  - id: a
+    component: vigil-worker-1
+    expected_action: nixos_rebuild
+    root_cause_keywords: ["ip_local_port_range", "ephemeral", "port", "sysctl"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      fault_type: sysctl_drift
+      target_host: vigil-worker-1
+      key: net.ipv4.ip_local_port_range
+      value: "32000 32003"
+      restore_value: "32768 60999"
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: sysctl_modified
+      host: vigil-worker-1
+      key: net.ipv4.ip_local_port_range
+      expected_value: "32000 32003"
+      timeout_s: 30
+    health_probe:
+      kind: host_cmd
+      host: vigil-worker-1
+      command: "sysctl -n net.ipv4.ip_local_port_range | tr '\\t' ' '"
+      expect: "32768 60999"
+      window_s: 300

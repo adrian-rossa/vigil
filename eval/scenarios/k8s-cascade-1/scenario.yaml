@@ -1,0 +1,37 @@
+id: k8s-cascade-1
+name: bad-nginx-configmap-causing-crashloop
+layer: k8s
+relationship: cascading
+detection: alert
+root_cause_component: "ConfigMap/vigil-app-nginx-config invalid nginx directive causing vigil-app CrashLoopBackOff"
+expected_action: git_commit_k8s
+expected_resolution_path: "remove invalid directive from apps/vigil-app-nginx-config.yaml so nginx starts cleanly"
+alert_name: KubePodCrashLooping
+root_cause_keywords: ["nginx", "ConfigMap", "vigil-app-nginx-config", "directive"]
+
+faults:
+  - id: a
+    component: configmap/vigil-app-nginx-config
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app-nginx-config.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["nginx", "ConfigMap", "vigil-app-nginx-config", "directive"]
+    alert_name: KubePodCrashLooping
+    severity: user_facing
+    inject_params:
+      fault_type: nginx_bad_config
+      bad_directive: "invalid_directive on;"
+      restart_deployment: vigil-app
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: vigil-app
+      namespace: default
+      timeout_s: 120
+    health_probe:
+      kind: kube_condition
+      resource: deployment/vigil-app
+      namespace: default
+      condition: Available
+      expect: "True"
+      window_s: 300

@@ -1,0 +1,58 @@
+id: k8s-pair-samefile-1
+name: same-file-oom-and-readiness-probe-pair
+layer: k8s
+relationship: independent
+detection: alert
+root_cause_component: "vigil-app.yaml mem-load 32Mi OOM + vigil-app readinessProbe port 8080"
+expected_action: git_commit_k8s
+expected_resolution_path: "restore mem-load memory limit and readinessProbe port 80 in apps/vigil-app.yaml"
+alert_name: KubeContainerOOMKilled
+root_cause_keywords: ["memory", "limit", "OOM", "readinessProbe", "8080"]
+
+faults:
+  - id: a
+    component: deployment/vigil-app
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["memory", "limit", "OOM", "mem-load"]
+    alert_name: KubeContainerOOMKilled
+    severity: user_facing
+    inject_params:
+      fault_type: container_memory_limit
+      container: mem-load
+      memory_limit: "32Mi"
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: vigil-app
+      namespace: default
+      timeout_s: 120
+    health_probe:
+      kind: kube_condition
+      resource: deployment/vigil-app
+      namespace: default
+      window_s: 300
+  - id: b
+    component: deployment/vigil-app
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["readinessProbe", "8080", "port"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      fault_type: readiness_probe_port
+      container: vigil-app
+      port: 8080
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: vigil-app
+      namespace: default
+      timeout_s: 120
+    health_probe:
+      kind: http_ok
+      url: http://vigil-app.default.svc/
+      expect: 200
+      window_s: 300
