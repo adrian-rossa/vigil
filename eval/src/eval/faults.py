@@ -77,11 +77,15 @@ def _find_container(obj: dict[str, Any], name: str) -> dict[str, Any]:
 def _apply_service_target_port(repo_root: Path, fault: Mapping[str, Any]) -> Path:
     rel = _get_manifest_rel(fault, f"{_APPS}/vigil-app-service.yaml")
     target_port = int(_get_params(fault).get("target_port", 8080))
-
-    def _mutate(obj: dict[str, Any]) -> None:
-        obj["spec"]["ports"][0]["targetPort"] = target_port
-
-    _edit_yaml(repo_root / rel, _mutate)
+    path = repo_root / rel
+    docs = [
+        doc for doc in yaml.safe_load_all(path.read_text()) if isinstance(doc, dict)
+    ]
+    target = next((doc for doc in docs if doc.get("kind") == "Service"), docs[0])
+    target["spec"]["ports"][0]["targetPort"] = target_port
+    path.write_text(
+        yaml.safe_dump_all(docs, default_flow_style=False, sort_keys=False)
+    )
     return rel
 
 

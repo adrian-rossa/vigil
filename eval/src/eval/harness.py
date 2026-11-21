@@ -118,8 +118,12 @@ def _check_pod_not_ready(verify: dict, ns: str, kubeconfig: str | None) -> bool:
     for cond in obj.get("status", {}).get("conditions", []):
         if cond.get("type") == "ReplicaFailure" and cond.get("status") == "True":
             return True
+    match_labels = obj.get("spec", {}).get("selector", {}).get("matchLabels") or {
+        "app": deployment,
+    }
+    selector = ",".join(f"{k}={v}" for k, v in sorted(match_labels.items()))
     r2 = _kubectl(
-        ["get", "pods", "-n", ns, "-l", f"app={deployment}", "-o", "json"],
+        ["get", "pods", "-n", ns, "-l", selector, "-o", "json"],
         kubeconfig,
     )
     if r2.returncode != 0:
@@ -282,7 +286,8 @@ def _probe_passes(probe: dict, kubeconfig: str | None = None) -> bool:
         if condition is None:
             spec = obj.get("spec", {}).get("replicas", 0)
             avail = obj.get("status", {}).get("availableReplicas", 0)
-            return spec > 0 and avail == spec
+            unavail = obj.get("status", {}).get("unavailableReplicas", 0)
+            return spec > 0 and avail == spec and unavail == 0
         for c in obj.get("status", {}).get("conditions", []):
             if c.get("type") == condition:
                 return str(c.get("status")) == str(probe.get("expect", "True"))
