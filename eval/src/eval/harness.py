@@ -20,6 +20,8 @@ from common.constants import SHUTDOWN_DRAIN_S
 from orchestrator.agent import MAX_TRIES, _write_run_record, build_run_id, retry_run_id
 from orchestrator.models import RunRecord
 
+from eval import faults as fault_lib
+
 _HARNESS_WAIT_BUFFER_S = 300
 _RESULT_POLL_INTERVAL_S = 2
 _WAIT_LOG_INTERVAL_S = 30
@@ -741,7 +743,11 @@ def is_final_record(record: Mapping[str, Any]) -> bool:
 
 
 async def _wait_for_record(
-    runs_dir: Path, run_id: str, timeout_s: float, verbose: bool
+    runs_dir: Path,
+    run_id: str, 
+    timeout_s: float, 
+    verbose: bool,
+    window_start: float | None = None,
 ) -> dict[str, Any]:
     result_path = runs_dir / f"{run_id}.json"
     stop = asyncio.Event()
@@ -753,9 +759,12 @@ async def _wait_for_record(
 
     loop = asyncio.get_event_loop()
     started = loop.time()
+    prev = started
     last_log = started
+    elapsed = 0.0
+    max_wait_s = timeout_s * 4
     try:
-        while loop.time() - started < timeout_s:
+        while elapsed < timeout_s and (prev - started) < max_wait_s:
             if result_path.exists():
                 try:
                     return json.loads(result_path.read_text())
@@ -763,9 +772,15 @@ async def _wait_for_record(
                     log.debug("record %s is still being written", result_path)
             await asyncio.sleep(_RESULT_POLL_INTERVAL_S)
             now = loop.time()
+            other_active = window_start is not None and any(
+                run != run_id for run in _in_flight_traces(runs_dir, window_start)
+            )
+            if not other_active:
+                elapsed += max(0.0, now - prev)
+            prev = now
             if now - last_log >= _WAIT_LOG_INTERVAL_S:
                 log.debug(
-                    "still waiting for %s ... %.0fs elapsed", run_id, now - started
+                    "still waiting for %s ... %.0fs elapsed", run_id, elapsed
                 )
                 last_log = now
         raise TimeoutError(
@@ -881,12 +896,18 @@ async def _wait_for_drain(
 
 
 async def _follow_run(
-    runs_dir: Path, run_id: str, per_try_s: float, verbose: bool
+    runs_dir: Path, 
+    run_id: str, 
+    per_try_s: float, 
+    verbose: bool, 
+    window_start: float | None = None,
 ) -> Path:
     """Wait for run and any queued retries until final record is written"""
     current = run_id 
     while True:
-        record = await _wait_for_record(runs_dir, current, per_try_s, verbose)
+        record = await _wait_for_record(
+            runs_dir, current, per_try_s, verbose, window_start
+        )
         if is_final_record(record):
             return runs_dir / f"{current}.json"
         current = retry_run_id(record["incident_id"], record["attempts"] + 1)
@@ -915,7 +936,9 @@ async def _wait_for_alert_run(
         run_id = _detected_run_id(runs_dir, since)
         if run_id is not None:
             log.info("detected real alert run_id %s", run_id)
-            return await _follow_run(runs_dir, run_id, per_try_s, verbose)
+            return await _follow_run(
+                runs_dir, run_id, per_try_s, verbose, window_start=since
+            )
         if asyncio.get_event_loop().time() - started >= detect_timeout_s:
             log.warning(
                 "no alert run within %.0fs - falling back to synthetic webhook",
@@ -935,6 +958,7 @@ async def trigger_and_wait(
     verbose: bool = False,
     target_host: str | None = None,
     faults: list[dict[str, Any]] | None = None,
+    window_start: float | None = None,
 ) -> Path:
     webhook_secret = os.environ.get("VIGIL_WEBHOOK_SECRET", "")
     if not webhook_secret:
@@ -980,7 +1004,12 @@ async def trigger_and_wait(
             (runs_dir / f"{stale}.json").unlink(missing_ok=True)
             (runs_dir / f"{stale}_trace.jsonl").unlink(missing_ok=True)
 
-    paths = [await _follow_run(runs_dir, rid, per_try_s, verbose) for rid in run_ids]
+    paths = [
+        await _follow_run(
+            runs_dir, rid, per_try_s, verbose, window_start
+            ) 
+            for rid in run_ids
+            ]
     return paths[0]
 
 
@@ -1001,6 +1030,13 @@ async def run_one(
     wait_flux_ready_sh = scenarios_dir.parent / "scripts" / "wait-flux-ready.sh"
     reset_sh = _script_path(scenarios_dir, scenario_id, "reset.sh")
     inject_sh = _script_path(scenarios_dir, scenario_id, "inject.sh")
+
+    scenario_yaml = scenarios_dir / scenario_id / "scenario.yaml"
+    data: dict[str, Any] = {}
+    if scenario_yaml.exists():
+        with scenario_yaml.open() as file:
+            data = yaml.safe_load(file) or {}
+    use_fault_lib = fault_lib.has_library_faults(data)
 
     if reset_baseline_sh.is_file():
         log.info(
@@ -1026,8 +1062,14 @@ async def run_one(
                 + (result.stderr.strip() if result.stderr else "")
             )
 
-    log.info("running reset.sh for %s", scenario_id)
-    _run_script(reset_sh, seed, verbose=verbose)
+    if reset_sh.is_file():
+        log.info("running reset.sh for %s", scenario_id)
+        _run_script(reset_sh, seed, verbose=verbose)
+    elif use_fault_lib:
+        log.info("running Python fault reset for %s", scenario_id)
+        fault_lib.reset_faults(data)
+    else:
+        raise FileNotFoundError(f"script not found: {reset_sh}")
 
     baseline, all_ready = await capture_flux_baseline()
     if not all_ready:
@@ -1051,27 +1093,33 @@ async def run_one(
         return result_path
 
     _reset_circuit_breaker()
-    log.info("running inject.sh for %s", scenario_id)
+
     head_before = _repo_head()
     window_start = time.time() - 5
     inject_start = time.monotonic()
-    _run_script(inject_sh, seed, verbose=verbose)
+    if inject_sh.is_file():
+        log.info("running inject.sh for %s", scenario_id)
+        _run_script(inject_sh, seed, verbose=verbose)
+    elif use_fault_lib:
+        log.info("running Python fault injection for %s", scenario_id)
+        repo_root = Path(os.environ.get("VIGIL_REPO_ROOT") or ".")
+        fault_lib.inject_faults(
+            scenario_id,
+            data,
+            repo_root,
+            eval_branch(os.environ),
+            kubeconfig=os.environ.get("EVAL_RUNNER_KUBECONFIG") or None,
+        )
+    else:
+        raise FileNotFoundError(f"script not found: {inject_sh}")
     inject_s = time.monotonic() - inject_start
     head_after = _repo_head()
     log.info("inject.sh for %s took %.1fs", scenario_id, inject_s)
 
-    target_host: str | None = None
-    verify_broken: dict | None = None
-    detection = "synthetic"
-    scenario_yaml = scenarios_dir / scenario_id / "scenario.yaml"
-    faults: list[dict[str, Any]] = []
-    if scenario_yaml.exists():
-        with scenario_yaml.open() as f:
-            data = yaml.safe_load(f)
-        target_host = (data.get("inject_params") or {}).get("target_host")
-        verify_broken = data.get("verify_broken") or None
-        faults = list(data.get("faults") or [])
-        detection = str(data.get("detection") or "synthetic")
+    target_host = (data.get("inject_params") or {}).get("target_host")
+    verify_broken = data.get("verify_broken") or None
+    faults = list(data.get("faults") or [])
+    detection = str(data.get("detection") or "synthetic")
 
     verify_checks = [verify_broken] if verify_broken else []
     verify_checks.extend(f["verify_broken"] for f in faults if f.get("verify_broken"))
@@ -1093,32 +1141,48 @@ async def run_one(
 
     path: Path | None = None
     detection_used = "synthetic"
-    if detection == "alert":
-        path = await _wait_for_alert_run(
-            runs_dir,
-            window_start,
-            timeout_s or DEFAULT_TIMEOUT_S,
-            verbose = verbose,
+    try:
+        if detection == "alert":
+            path = await _wait_for_alert_run(
+                runs_dir,
+                window_start,
+                timeout_s or DEFAULT_TIMEOUT_S,
+                verbose = verbose,
+            )
+            if path is not None:
+                detection_used = "alert"
+        if path is None:
+            path = await trigger_and_wait(
+                scenario_id=scenario_id,
+                seed=seed,
+                orchestrator_url=orchestrator_url,
+                runs_dir = runs_dir,
+                model = model,
+                timeout_s = timeout_s,
+                verbose = verbose,
+                target_host = target_host,
+                faults = faults or None,
+                window_start=window_start,
+            )
+        await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
+    finally:
+        records = _records_in_window(runs_dir, window_start, time.time() + 5)
+        gaps_s =_log_run_gaps(records)
+        attempt_target = path or (
+            runs_dir / f"{records[0]['run_id']}.json"
+            if records and records[0].get("run_id")
+            else None
         )
-        if path is not None:
-            detection_used = "alert"
-    if path is None:
-        path = await trigger_and_wait(
-            scenario_id=scenario_id,
-            seed=seed,
-            orchestrator_url=orchestrator_url,
-            runs_dir = runs_dir,
-            model = model,
-            timeout_s = timeout_s,
-            verbose = verbose,
-            target_host = target_host,
-            faults = faults or None,
-        )
-    await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
-    records = _records_in_window(runs_dir, window_start, time.time() + 5)
-    gaps_s =_log_run_gaps(records)
-    _write_attempt(
-        path, scenario_id, seed, inject_s, records, gaps_s, detection_used
-    )
-    log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
+        if attempt_target is not None:
+            _write_attempt(
+                attempt_target, 
+                scenario_id, 
+                seed, 
+                inject_s, 
+                records,
+                gaps_s, 
+                detection_used
+            )
+        log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
+    assert path is not None
     return path

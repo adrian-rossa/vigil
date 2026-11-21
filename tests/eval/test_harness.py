@@ -1430,58 +1430,133 @@ def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
 
 
 async def test_trigger_and_wait_multi_fault_omits_seed_and_posts_per_fault(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("VIGIL_WEBHOOK_SECRET", "s")
-        posted_params: list[dict] = []
-        run_ids = ["pair-run-a", "pair-run-b"]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VIGIL_WEBHOOK_SECRET", "s")
+    posted_params: list[dict] = []
+    run_ids = ["pair-run-a", "pair-run-b"]
 
-        class FakeOrchestrator:
-            async def __aenter__(self):
-                return self
+    class FakeOrchestrator:
+        async def __aenter__(self):
+            return self
 
-            async def __aexit__(self, *args):
-                pass
+        async def __aexit__(self, *args):
+            pass
 
-            async def get(self, url, **kwargs):
-                resp = MagicMock()
-                resp.raise_for_status = MagicMock()
-                resp.json = MagicMock(return_value={
-                    "status": "ok", "run_timeout_s": 60.0})
-                return resp
+        async def get(self, url, **kwargs):
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(return_value={
+                "status": "ok", "run_timeout_s": 60.0})
+            return resp
 
-            async def post(self, url, **kwargs):
-                posted_params.append(dict(kwargs.get("params") or {}))
-                rid = run_ids[len(posted_params) - 1]
-                resp = MagicMock()
-                resp.raise_for_status = MagicMock()
-                resp.json = MagicMock(return_value={"run_id": rid})
-                return resp
+        async def post(self, url, **kwargs):
+            posted_params.append(dict(kwargs.get("params") or {}))
+            rid = run_ids[len(posted_params) - 1]
+            resp = MagicMock()
+            resp.raise_for_status = MagicMock()
+            resp.json = MagicMock(return_value={"run_id": rid})
+            return resp
 
-        pending = list(run_ids)
+    pending = list(run_ids)
 
-        async def fake_sleep(_seconds: float) -> None:
-            if pending:
-                rid = pending.pop(0)
-                (tmp_path / f"{rid}.json").write_test(
-                    json.dumps({"run_id": rid, "retry_queued": False})
-                )
+    async def fake_sleep(_seconds: float) -> None:
+        if pending:
+            rid = pending.pop(0)
+            (tmp_path / f"{rid}.json").write_text(
+                json.dumps({"run_id": rid, "retry_queued": False})
+            )
 
-        monkeypatch.setattr(harness_mod.httpx, "AsyncClient", FakeOrchestrator)
-        monkeypatch.setattr(harness_mod.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(harness_mod.httpx, "AsyncClient", FakeOrchestrator)
+    monkeypatch.setattr(harness_mod.asyncio, "sleep", fake_sleep)
 
-        faults = [
-            {"id": "a", "alert_name": "KubePodCrashLooping"},
-            {"id": "b", "alert_name": "KubePodNotReady"},
-        ]
-        res = await trigger_and_wait(
-            scenario_id="k8s-pair-1",
-            seed=1,
-            orchestrator_url="http://localhost:9099",
-            runs_dir=tmp_path,
-            model="test-model",
-            faults=faults,
-        )
-        assert res == tmp_path / "pair-run-a.json"
-        assert len(posted_params) == 2
-        assert all("seed" not in p for p in posted_params)
+    faults = [
+        {"id": "a", "alert_name": "KubePodCrashLooping"},
+        {"id": "b", "alert_name": "KubePodNotReady"},
+    ]
+    res = await trigger_and_wait(
+        scenario_id="k8s-pair-1",
+        seed=1,
+        orchestrator_url="http://localhost:9099",
+        runs_dir=tmp_path,
+        model="test-model",
+        faults=faults,
+    )
+    assert res == tmp_path / "pair-run-a.json"
+    assert len(posted_params) == 2
+    assert all("seed" not in p for p in posted_params)
+
+
+async def test_wait_for_record_pauses_timeout_while_other_run_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    other_trace = tmp_path / "run-2_trace.jsonl"
+    other_trace.write_text("{}\n")
+    window_start = other_trace.stat().st_mtime - 5.0
+    now = [0.0]
+    ticks = [0]
+    async def fake_sleep(seconds: float) -> None:
+        now[0] += seconds
+        ticks[0] += 1
+        if ticks[0] == 5:
+            (tmp_path / "run-2.json").write_text(json.dumps({"run_id": "run-2"}))
+            (tmp_path / "run-1-try-2.json").write_text(
+                json.dumps({"run_id": "run-1-try-2", "retry_queued": False})
+            )
+    monkeypatch.setattr(
+        harness_mod.asyncio,
+        "get_event_loop",
+        lambda: SimpleNamespace(time=lambda: now[0]),
+    )
+    monkeypatch.setattr(harness_mod.asyncio, "sleep", fake_sleep)
+    rec = await harness_mod._wait_for_record(
+        tmp_path, "run-1-try-2", timeout_s=6.0, verbose=False, window_start=window_start
+    )
+    assert rec["run_id"] == "run-1-try-2"
+
+
+async def test_run_one_uses_fault_lib_and_writes_attempt_on_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+    scenarios_dir = tmp_path / "scenarios"
+    scen_dir = scenarios_dir / "lib-pair"
+    scen_dir.mkdir(parents=True)
+    (scen_dir / "scenario.yaml").write_text(
+        "faults:\n"
+        "  - id: a\n"
+        "    inject_params:\n"
+        "      fault_type: service_target_port\n"
+    )
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    calls = {"reset": 0, "inject": 0}
+    async def fake_baseline() -> tuple[dict, bool]:
+        return {}, True
+    async def fake_trigger(**_kwargs: object) -> Path:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rec = _make_run_record("run-1")
+        rec["started_at"] = now_iso
+        (runs_dir / "run-1.json").write_text(json.dumps(rec))
+        raise TimeoutError("retry timed out")
+    monkeypatch.setattr(harness_mod, "capture_flux_baseline", fake_baseline)
+    monkeypatch.setattr(harness_mod, "_repo_head", lambda: None)
+    monkeypatch.setattr(
+        harness_mod.fault_lib,
+        "reset_faults",
+        lambda _data: calls.__setitem__("reset", calls["reset"] + 1) or [],
+    )
+    monkeypatch.setattr(
+        harness_mod.fault_lib,
+        "inject_faults",
+        lambda *_a, **_kw: calls.__setitem__("inject", calls["inject"] + 1) or [],
+    )
+    monkeypatch.setattr(harness_mod, "trigger_and_wait", fake_trigger)
+    with pytest.raises(TimeoutError):
+        await run_one("lib-pair", 1, scenarios_dir, "test-model", runs_dir=runs_dir)
+    assert calls == {"reset": 1, "inject": 1}
+    attempt = json.loads((runs_dir / "run-1_attempt.json").read_text())
+    assert attempt["scenario"] == "lib-pair"
+    assert attempt["n_runs"] == 1
