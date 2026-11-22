@@ -1,0 +1,65 @@
+id: k8s-pair-1-noise
+name: different-file-severity-ordered-pair-with-noise
+layer: k8s
+relationship: independent
+detection: alert
+
+noise:
+  enabled: true
+  schedule_s: 300
+  duration_s: 120
+  patterns: 2
+  kinds: [pod_delete, cpu_stress]
+  target: unrelated
+
+root_cause_component: "Service/app-backend targetPort 8080 + Grafana nonexistent nodeSelector"
+expected_action: git_commit_k8s
+expected_resolution_path: "fix Service/app-backend targetPort to 80 and remove Grafana bad nodeSelector"
+alert_name: KubePodNotReady
+root_cause_keywords: ["targetPort", "app-backend", "nodeSelector", "grafana"]
+
+faults:
+  - id: a
+    component: service/app-backend
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/app-backend.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["targetPort", "8080", "app-backend"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      fault_type: service_target_port
+      target_port: 8080
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: vigil-app
+      namespace: default
+      timeout_s: 120
+    health_probe:
+      kind: http_ok
+      url: http://vigil-app.default.svc/
+      expect: 200
+      window_s: 300
+  - id: b
+    component: deployment/kube-prometheus-stack-grafana
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/infrastructure/monitoring/kube-prometheus-stack/values-alertmanager.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["nodeSelector", "grafana", "nonexistent-bogus-node"]
+    alert_name: KubePodNotReady
+    severity: internal
+    inject_params:
+      fault_type: grafana_node_selector
+      hostname: nonexistent-bogus-node
+      namespace: monitoring
+      deployment: kube-prometheus-stack-grafana
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: kube-prometheus-stack-grafana
+      namespace: monitoring
+      timeout_s: 180
+    health_probe:
+      kind: kube_condition
+      resource: deployment/kube-prometheus-stack-grafana
+      namespace: monitoring
+      window_s: 300

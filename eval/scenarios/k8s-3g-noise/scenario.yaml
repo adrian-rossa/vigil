@@ -1,0 +1,44 @@
+id: k8s-3g-noise
+name: oom-memory-limit-committed-with-noise
+layer: k8s
+relationship: single
+detection: alert
+
+noise:
+  enabled: true
+  schedule_s: 300
+  duration_s: 120
+  patterns: 2
+  kinds: [pod_delete, cpu_stress]
+  target: unrelated
+
+root_cause_component: "vigil-app.yaml committed the mem-load sidecar resources.limits.memory: \"32Mi\" below its ~50Mi working set with background noise enabled"
+expected_action: git_commit_k8s
+expected_resolution_path: "diagnosis -> git_commit_k8s (restore memory limit in manifest) -> gate_pass -> reconcile -> watchdog_confirm"
+alert_name: KubeContainerOOMKilled
+root_cause_keywords: ["memory", "limit", "OOM"]
+
+faults:
+  - id: a
+    component: deployment/vigil-app
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["memory", "limit", "OOM"]
+    alert_name: KubeContainerOOMKilled
+    severity: user_facing
+    inject_params:
+      fault_type: container_memory_limit
+      container: mem-load
+      memory_limit: "32Mi"
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: vigil-app
+      namespace: default
+      timeout_s: 120
+    health_probe:
+      kind: http_ok
+      url: http://vigil-app.default.svc/
+      expect: 200
+      window_s: 300

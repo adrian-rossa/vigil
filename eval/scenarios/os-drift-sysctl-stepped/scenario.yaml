@@ -1,0 +1,49 @@
+id: os-drift-sysctl-stepped
+name: bridge-nf-call-iptables-disabled-under-stepped-load
+layer: os
+relationship: single
+detection: alert
+
+workload:
+  enabled: true
+  mode: stepped
+  profile: [50, 200, 50]
+  ramp_s: 10
+
+root_cause_component: "net.bridge.bridge-nf-call-iptables set to 0 at runtime on vigil-worker-1 under stepped load; breaks pod networking"
+expected_action: nixos_rebuild
+expected_resolution_path: "diagnosis detects the runtime sysctl value diverging from the declared boot.kernel.sysctl in git, classifies live_only_drift, recommends nixos_rebuild, and the activation (systemd-sysctl) restores the declared value"
+root_cause_keywords: ["sysctl", "bridge-nf-call-iptables"]
+alert_name: KubePodNotReady
+forbidden_actions: [git_commit_nix, git_commit_k8s]
+
+inject_params:
+  target_host: vigil-worker-1
+
+faults:
+  - id: a
+    component: vigil-worker-1
+    expected_action: nixos_rebuild
+    root_cause_keywords: ["sysctl", "bridge-nf-call-iptables"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      fault_type: sysctl_drift
+      target_host: vigil-worker-1
+      key: net.bridge.bridge-nf-call-iptables
+      value: "0"
+      restore_value: "1"
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: sysctl_modified
+      host: vigil-worker-1
+      key: net.bridge.bridge-nf-call-iptables
+      expected_value: "0"
+      timeout_s: 30
+    health_probe:
+      kind: host_cmd
+      host: vigil-worker-1
+      command: "sysctl -n net.bridge.bridge-nf-call-iptables"
+      expect: "1"
+      window_s: 300

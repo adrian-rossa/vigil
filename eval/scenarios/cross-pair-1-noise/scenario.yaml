@@ -1,0 +1,72 @@
+id: cross-pair-1-noise
+name: os-sysctl-drift-and-grafana-scheduler-pair-with-noise
+layer: cross
+relationship: independent
+detection: alert
+
+noise:
+  enabled: true
+  schedule_s: 300
+  duration_s: 120
+  patterns: 2
+  kinds: [pod_delete, cpu_stress]
+  target: unrelated
+
+root_cause_component: "vigil-worker-1 bridge-nf-call-iptables=0 + Grafana nonexistent nodeSelector"
+expected_action: nixos_rebuild
+expected_resolution_path: "nixos_rebuild on vigil-worker-1 to restore sysctl and git_commit_k8s to fix Grafana nodeSelector"
+alert_name: KubePodNotReady
+root_cause_keywords: ["sysctl", "bridge-nf-call-iptables", "nodeSelector", "grafana"]
+
+inject_params:
+  target_host: vigil-worker-1
+
+faults:
+  - id: a
+    component: vigil-worker-1
+    expected_action: nixos_rebuild
+    root_cause_keywords: ["sysctl", "bridge-nf-call-iptables"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      fault_type: sysctl_drift
+      target_host: vigil-worker-1
+      key: net.bridge.bridge-nf-call-iptables
+      value: "0"
+      restore_value: "1"
+      namespace: default
+      deployment: vigil-app
+    verify_broken:
+      symptom: sysctl_modified
+      host: vigil-worker-1
+      key: net.bridge.bridge-nf-call-iptables
+      expected_value: "0"
+      timeout_s: 30
+    health_probe:
+      kind: host_cmd
+      host: vigil-worker-1
+      command: "sysctl -n net.bridge.bridge-nf-call-iptables"
+      expect: "1"
+      window_s: 300
+  - id: b
+    component: deployment/kube-prometheus-stack-grafana
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/infrastructure/monitoring/kube-prometheus-stack/values-alertmanager.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["nodeSelector", "grafana", "nonexistent-bogus-node"]
+    alert_name: KubePodNotReady
+    severity: internal
+    inject_params:
+      fault_type: grafana_node_selector
+      hostname: nonexistent-bogus-node
+      namespace: monitoring
+      deployment: kube-prometheus-stack-grafana
+    verify_broken:
+      symptom: pod_not_ready
+      deployment: kube-prometheus-stack-grafana
+      namespace: monitoring
+      timeout_s: 180
+    health_probe:
+      kind: kube_condition
+      resource: deployment/kube-prometheus-stack-grafana
+      namespace: monitoring
+      window_s: 300
