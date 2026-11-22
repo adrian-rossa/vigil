@@ -71,6 +71,18 @@ def cli() -> None:
     default=False,
     help="Stream script output and log progress to stderr.",
 )
+@click.option(
+    "--workload",
+    type=click.Choice(["off", "stepped"]),
+    default=None,
+    help="Override scenario.yaml workload factor (off or stepped)",
+)
+@click.option(
+    "--noise/--no-noise",
+    "noise_override",
+    default=None,
+    help="Override scenario.yaml bg noise factor"
+)
 def run_cmd(
     scenario: str,
     seed: int,
@@ -80,6 +92,8 @@ def run_cmd(
     scenarios_dir: Path,
     runs_dir: Path | None,
     verbose: bool,
+    workload: str | None,
+    noise_override: bool | None,
 ) -> None:
     """Execute one eval run: reset -> inject -> POST -> poll -> print metrics."""
     logging.basicConfig(
@@ -100,6 +114,8 @@ def run_cmd(
                 runs_dir=runs_dir,
                 timeout_s=timeout_s,
                 verbose=verbose,
+                workload_override=workload,
+                noise_override=noise_override,
             )
         )
     except TimeoutError as e:

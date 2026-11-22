@@ -1560,3 +1560,91 @@ async def test_run_one_uses_fault_lib_and_writes_attempt_on_timeout(
     attempt = json.loads((runs_dir / "run-1_attempt.json").read_text())
     assert attempt["scenario"] == "lib-pair"
     assert attempt["n_runs"] == 1
+
+
+async def test_run_one_starts_and_stops_traffic_and_noise_in_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import datetime, timezone
+
+    scenarios_dir = tmp_path / "scenarios"
+    scen_dir = scenarios_dir / "factor-test"
+    scen_dir.mkdir(parents=True)
+    (scen_dir / "scenario.yaml").write_text(
+        "faults:\n"
+        "  - id: a\n"
+        "    inject_params:\n"
+        "      fault_type: service_target_port\n"
+    )
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+
+    order: list[str] = []
+
+    class FakeTraffic:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def start(self) -> None:
+            order.append("traffic.start")
+
+        async def stop(self) -> dict[str, object]:
+            order.append("traffic.stop")
+            return {"total_requests": 42, "p99_ms": 12.5}
+
+    class FakeNoise:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        async def start(self) -> None:
+            order.append("noise.start")
+
+        async def stop(self) -> dict[str, object]:
+            order.append("noise.stop")
+            return {"enabled": True, "total_events": 2, "events": []}
+
+    async def fake_baseline() -> tuple[dict, bool]:
+        return {}, True
+
+    async def fake_trigger(**_kwargs: object) -> Path:
+        order.append("trigger")
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rec = _make_run_record("run-factor")
+        rec["started_at"] = now_iso
+        rec_path = runs_dir / "run-factor.json"
+        rec_path.write_text(json.dumps(rec))
+        return rec_path
+
+    monkeypatch.setattr(harness_mod, "SteppedTrafficRunner", FakeTraffic)
+    monkeypatch.setattr(harness_mod, "NoiseRunner", FakeNoise)
+    monkeypatch.setattr(harness_mod, "capture_flux_baseline", fake_baseline)
+    monkeypatch.setattr(harness_mod, "_repo_head", lambda: None)
+    monkeypatch.setattr(harness_mod.fault_lib, "reset_faults", lambda _d: [])
+    monkeypatch.setattr(
+        harness_mod.fault_lib,
+        "inject_faults",
+        lambda *_a, **_kw: order.append("inject") or [],
+    )
+    monkeypatch.setattr(harness_mod, "trigger_and_wait", fake_trigger)
+
+    await run_one(
+        "factor-test",
+        1,
+        scenarios_dir,
+        "test-model",
+        runs_dir=runs_dir,
+        workload_override="stepped",
+        noise_override=True,
+    )
+
+    assert order == [
+        "traffic.start",
+        "inject",
+        "noise.start",
+        "trigger",
+        "noise.stop",
+        "traffic.stop",
+    ]
+    attempt = json.loads((runs_dir / "run-factor_attempt.json").read_text())
+    assert attempt["traffic"]["total_requests"] == 42
+    assert attempt["noise"]["total_events"] == 2

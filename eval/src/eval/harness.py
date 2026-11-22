@@ -21,6 +21,8 @@ from orchestrator.agent import MAX_TRIES, _write_run_record, build_run_id, retry
 from orchestrator.models import RunRecord
 
 from eval import faults as fault_lib
+from eval.noise import NoiseRunner, excluded_prefixes
+from eval.traffic import SteppedTrafficRunner
 
 _HARNESS_WAIT_BUFFER_S = 300
 _RESULT_POLL_INTERVAL_S = 2
@@ -850,6 +852,8 @@ def _write_attempt(
     records: list[dict],
     gaps_s: list[float],
     detection_used: str = "synthetic",
+    traffic: dict[str, Any] | None = None,
+    noise: dict[str, Any] | None = None,
 ) -> Path: 
     """Persist attempt-level metadata next to the primary run record"""
     attempt_path = path.with_name(f"{path.stem}_attempt.json")
@@ -865,6 +869,10 @@ def _write_attempt(
         "run_ids": run_ids,
         "gaps_s": gaps_s,
     }
+    if traffic is not None:
+        payload["traffic"] = traffic
+    if noise is not None:
+        payload["noise"] = noise
     attempt_path.write_text(json.dumps(payload, indent=2) + "\n")
     return attempt_path
 
@@ -1020,6 +1028,47 @@ async def trigger_and_wait(
     return paths[0]
 
 
+def _build_traffic_runner(
+    data: Mapping[str, Any],
+    workload_override: str | None,
+    kubeconfig: str | None,
+) -> SteppedTrafficRunner | None:
+    cfg = dict(data.get("workload") or {})
+    enabled = (
+        workload_override == "stepped"
+        if workload_override is not None
+        else bool(cfg.get("enabled")) and cfg.get("mode", "stepped") == "stepped"
+    )
+    if not enabled:
+        return None
+    return SteppedTrafficRunner(
+        profile=list(cfg.get("profile") or [50,200,50]),
+        ramp_s=float(cfg.get("ramp_s", 10.0)),
+        kubeconfig=kubeconfig,
+    )
+   
+
+def _build_noise_runner(
+    data: Mapping[str, Any],
+    noise_override: str | None,
+    seed: int,
+    kubeconfig: str | None,
+) -> NoiseRunner | None:
+    cfg = dict(data.get("noise") or {})
+    enabled = noise_override if noise_override is not None else bool(cfg.get("enabled"))
+    if not enabled:
+        return None
+    return NoiseRunner(
+        kinds=list(cfg.get("kinds") or ["pod_delete", "cpu_stress"]),
+        schedule_s=float(cfg.get("schedule_s", 300.0)),
+        duration_s=int(cfg.get("duration_s", 120.0)),
+        patterns=int(cfg.get("patterns", 2)),
+        seed=seed,
+        excluded=excluded_prefixes(data),
+        kubeconfig=kubeconfig,
+    )
+
+
 async def run_one(
     scenario_id: str,
     seed: int,
@@ -1029,6 +1078,8 @@ async def run_one(
     runs_dir: Path | None = None,
     timeout_s: int | None = None,
     verbose: bool = False,
+    workload_override: str | None = None,
+    noise_override: bool | None = None,
 ) -> Path:
     if runs_dir is None:
         runs_dir = Path(os.environ.get("EVAL_RUNS_DIR", "eval/runs"))
@@ -1101,54 +1152,78 @@ async def run_one(
 
     _reset_circuit_breaker()
 
-    head_before = _repo_head()
+    kubeconfig = os.environ.get("EVAL_RUNNER_KUBECONFIG") or None
+    traffic_runner = _build_traffic_runner(data, workload_override, kubeconfig)
+    noise_runner = _build_noise_runner(data, noise_override, seed, kubeconfig)
+    traffic_started = False
+    noise_started = False
+    inject_ok = False
+    inject_s = 0.0
     window_start = time.time() - 5
-    inject_start = time.monotonic()
-    if inject_sh.is_file():
-        log.info("running inject.sh for %s", scenario_id)
-        _run_script(inject_sh, seed, verbose=verbose)
-    elif use_fault_lib:
-        log.info("running Python fault injection for %s", scenario_id)
-        repo_root = Path(os.environ.get("VIGIL_REPO_ROOT") or ".")
-        fault_lib.inject_faults(
-            scenario_id,
-            data,
-            repo_root,
-            eval_branch(os.environ),
-            kubeconfig=os.environ.get("EVAL_RUNNER_KUBECONFIG") or None,
-        )
-    else:
-        raise FileNotFoundError(f"script not found: {inject_sh}")
-    inject_s = time.monotonic() - inject_start
-    head_after = _repo_head()
-    log.info("inject.sh for %s took %.1fs", scenario_id, inject_s)
-
-    target_host = (data.get("inject_params") or {}).get("target_host")
-    verify_broken = data.get("verify_broken") or None
-    faults = list(data.get("faults") or [])
-    detection = str(data.get("detection") or "synthetic")
-
-    verify_checks = [verify_broken] if verify_broken else []
-    verify_checks.extend(f["verify_broken"] for f in faults if f.get("verify_broken"))
-
-    try:
-        if head_before and head_after and head_after != head_before:
-            _wait_for_flux_uptake(scenario_id, head_after)
-        if verify_checks:
-            for check in verify_checks:
-                _wait_for_inject_symptom(scenario_id, check, scenarios_dir)
-        else:
-            log.warning(
-                "no verify_broken block for %s - skipping inject assertion",
-                scenario_id,
-            )
-    except InjectAssertionFailed as exc:
-        log.error("inject-assert failed for %s: %s", scenario_id, exc)
-        return _emit_inject_failed_record(scenario_id, seed, model, str(exc), runs_dir)
-
     path: Path | None = None
     detection_used = "synthetic"
+
     try:
+        if traffic_runner is not None:
+            log.info("starting stepped traffic runner for %s", scenario_id)
+            await traffic_runner.start()
+            traffic_started = True
+
+        head_before = _repo_head()
+        window_start = time.time() -5
+        inject_start = time.monotonic()
+        if inject_sh.is_file():
+            log.info("running inject.sh for %s", scenario_id)
+            _run_script(inject_sh, seed, verbose=verbose)
+        elif use_fault_lib:
+            log.info("running Python fault injection for %s", scenario_id)
+            repo_root = Path(os.environ.get("VIGIL_REPO_ROOT") or ".")
+            fault_lib.inject_faults(
+                scenario_id,
+                data,
+                repo_root,
+                eval_branch(os.environ),
+                kubeconfig=kubeconfig,
+            )
+        else:
+            raise FileNotFoundError(f"script not found: {inject_sh}")
+        inject_s = time.monotonic() - inject_start
+        head_after = _repo_head()
+        log.info("inject.sh for %s took %.1fs", scenario_id, inject_s)
+
+        target_host = (data.get("inject_params") or {}).get("target_host")
+        verify_broken = data.get("verify_broken") or None
+        faults = list(data.get("faults") or [])
+        detection = str(data.get("detection") or "synthetic")
+
+        verify_checks = [verify_broken] if verify_broken else []
+        verify_checks.extend(
+            f["verify_broken"] for f in faults if f.get("verify_broken")
+        )
+
+        try:
+            if head_before and head_after and head_after != head_before:
+                _wait_for_flux_uptake(scenario_id, head_after)
+            if verify_checks:
+                for check in verify_checks:
+                    _wait_for_inject_symptom(scenario_id, check, scenarios_dir)
+            else:
+                log.warning(
+                    "no verify_broken block for %s - skipping inject assertion",
+                    scenario_id,
+                )
+        except InjectAssertionFailed as exc:
+            log.error("inject-assert failed for %s: %s", scenario_id, exc)
+            return _emit_inject_failed_record(
+                scenario_id, seed, model, str(exc), runs_dir
+            )
+
+        inject_ok = True
+        if noise_runner is not None:
+            log.info("starting background noise runner for %s", scenario_id)
+            await noise_runner.start()
+            noise_started = True
+
         if detection == "alert":
             path = await _wait_for_alert_run(
                 runs_dir,
@@ -1173,23 +1248,32 @@ async def run_one(
             )
         await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
     finally:
-        records = _records_in_window(runs_dir, window_start, time.time() + 5)
-        gaps_s =_log_run_gaps(records)
-        attempt_target = path or (
-            runs_dir / f"{records[0]['run_id']}.json"
-            if records and records[0].get("run_id")
-            else None
-        )
-        if attempt_target is not None:
-            _write_attempt(
-                attempt_target, 
-                scenario_id, 
-                seed, 
-                inject_s, 
-                records,
-                gaps_s, 
-                detection_used
+        noise_summary: dict[str, Any] | None = None
+        traffic_summary: dict[str, Any] | None = None
+        if noise_runner is not None and noise_started:
+            noise_summary = await noise_runner.stop()
+        if traffic_runner is not None and traffic_started:
+            traffic_summary = await traffic_runner.stop()
+        if inject_ok:
+            records = _records_in_window(runs_dir, window_start, time.time() + 5)
+            gaps_s =_log_run_gaps(records)
+            attempt_target = path or (
+                runs_dir / f"{records[0]['run_id']}.json"
+                if records and records[0].get("run_id")
+                else None
             )
-        log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
+            if attempt_target is not None:
+                _write_attempt(
+                    attempt_target, 
+                    scenario_id, 
+                    seed, 
+                    inject_s, 
+                    records,
+                    gaps_s, 
+                    detection_used,
+                    traffic=traffic_summary,
+                    noise=noise_summary,
+                )
+            log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
     assert path is not None
     return path
