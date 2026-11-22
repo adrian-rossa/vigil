@@ -1,6 +1,8 @@
 id: os-drift-sysctl
 name: bridge-nf-call-iptables-disabled-at-runtime
 layer: os
+relationship: single
+detection: alert
 expected_action: nixos_rebuild
 
 root_cause_component: "net.bridge.bridge-nf-call-iptables set to 0 at runtime on vigil-worker-1; breaks pod networking"
@@ -20,3 +22,25 @@ verify_broken:
   key: net.bridge.bridge-nf-call-iptables
   expected_value: "0"
   timeout_s: 30
+
+faults:
+  - id: a
+    component: vigil-worker-1
+    expected_action: nixos_rebuild
+    root_cause_keywords: ["sysctl", "bridge-nf-call-iptables"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      fault_type: sysctl_drift
+      target_host: vigil-worker-1
+      key: net.bridge.bridge-nf-call-iptables
+      value: "0"
+      restore_value: "1"
+      namespace: default
+      deployment: vigil-app
+    health_probe:
+      kind: host_cmd
+      host: vigil-worker-1
+      command: "sysctl -n net.bridge.bridge-nf-call-iptables"
+      expect: "1"
+      window_s: 300

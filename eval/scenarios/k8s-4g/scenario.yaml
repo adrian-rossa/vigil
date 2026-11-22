@@ -1,6 +1,8 @@
 id: k8s-4g
 name: bogus-nodeselector-committed
 layer: k8s
+relationship: single
+detection: alert
 expected_action: git_commit_k8s
 
 root_cause_component: "vigil-app.yaml committed nodeSelector: {kubernetes.io/hostname: nonexistent-bogus-node} on chore/eval-cluster-baseline; pods enter Pending because no node matches the selector"
@@ -12,10 +14,29 @@ inject_params:
   namespace: default
   bad_node_selector: "nonexistent-bogus-node"
 
-alert_name: KubeDeploymentReplicasMismatch
+alert_name: KubePodNotReady
 
 verify_broken:
   symptom: pod_not_ready
   deployment: vigil-app
   namespace: default
   timeout_s: 60
+
+faults:
+  - id: a
+    component: deployment/vigil-app
+    manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml
+    expected_action: git_commit_k8s
+    root_cause_keywords: ["nodeSelector", "nonexistent-bogus-node"]
+    alert_name: KubePodNotReady
+    severity: user_facing
+    inject_params:
+      manifest: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml
+      deployment: vigil-app
+      namespace: default
+      bad_node_selector: "nonexistent-bogus-node"
+    health_probe:
+      kind: kube_condition
+      resource: deployment/vigil-app
+      namespace: default
+      window_s: 300
