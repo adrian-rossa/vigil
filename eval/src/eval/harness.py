@@ -854,6 +854,7 @@ def _write_attempt(
     detection_used: str = "synthetic",
     traffic: dict[str, Any] | None = None,
     noise: dict[str, Any] | None = None,
+    injected_at: str | None = None,
 ) -> Path: 
     """Persist attempt-level metadata next to the primary run record"""
     attempt_path = path.with_name(f"{path.stem}_attempt.json")
@@ -869,6 +870,8 @@ def _write_attempt(
         "run_ids": run_ids,
         "gaps_s": gaps_s,
     }
+    if injected_at is not None:
+        payload["injected_at"] = injected_at
     if traffic is not None:
         payload["traffic"] = traffic
     if noise is not None:
@@ -1188,6 +1191,7 @@ async def run_one(
         else:
             raise FileNotFoundError(f"script not found: {inject_sh}")
         inject_s = time.monotonic() - inject_start
+        injected_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         head_after = _repo_head()
         log.info("inject.sh for %s took %.1fs", scenario_id, inject_s)
 
@@ -1273,6 +1277,7 @@ async def run_one(
                     detection_used,
                     traffic=traffic_summary,
                     noise=noise_summary,
+                    injected_at=injected_at,
                 )
             log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
     assert path is not None
