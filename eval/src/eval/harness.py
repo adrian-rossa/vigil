@@ -1165,7 +1165,8 @@ async def run_one(
     window_start = time.time() - 5
     path: Path | None = None
     detection_used = "synthetic"
-
+    injected_at: str | None = None
+    
     try:
         if traffic_runner is not None:
             log.info("starting stepped traffic runner for %s", scenario_id)

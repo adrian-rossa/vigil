@@ -232,7 +232,7 @@ def compute_run_timing(
     }
 
 
-def _sum_known(rows: Sequence[Mapping[str]], key: str) -> float | None:
+def _sum_known(rows: Sequence[Mapping[str, Any]], key: str) -> float | None:
     vals = [float(row[key]) for row in rows if isinstance(row.get(key), (int, float))]
     return round(sum(vals), 3) if vals else None
 
