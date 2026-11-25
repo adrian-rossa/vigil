@@ -524,5 +524,83 @@ def aggregate_cmd(
     )
 
 
+@cli.command("score")
+@click.option(
+    "--runs-dir",
+    default=None,
+    envvar="EVAL_RUNS_DIR",
+    show_envvar=True,
+    type=click.Path(file_okay=False, path_type=Path),
+)
+@click.option(
+    "--scenarios-dir",
+    default="eval/scenarios",
+    envvar="VIGIL_SCENARIOS_DIR",
+    show_envvar=True,
+    type=click.Path(file_okay=False, path_type=Path),
+)
+@click.option(
+    "--repo-root",
+    default=".",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Git repo root used for diff-tree collision and merge timestamps",
+)
+def score_cmd(
+    runs_dir: Path | None,
+    scenarios_dir: Path,
+    repo_root: Path,
+) -> None:
+    """Re-score every attempt.json offline and emit score/timing/run_map"""
+    import yaml
+
+    from eval import score as score_lib
+    from eval import timings as timings_lib
+
+    resolved_runs = Path(runs_dir) if runs_dir else Path("eval/runs")
+    attempts = sorted(resolved_runs.glob("*_attempt.json"))
+    scored = 0
+    for attempt_path in attempts:
+        attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        scenario_id = str(attempt.get("scenario") or "")
+        primary_id = str(attempt.get("primary_run_id") or "")
+        if not scenario_id or not primary_id:
+            continue
+        scen_yaml = scenarios_dir / scenario_id / "scenario.yaml"
+        scenario = (
+            yaml.safe_load(scen_yaml.read_text(encoding="utf-8")) or {}
+            if scen_yaml.is_file()
+            else {}
+        )
+        primary_path = resolved_runs / f"{primary_id}.json"
+        probes = attempt.get("probe_results") or None
+        score_lib.update_run_map(resolved_runs, attempt)
+        score_data = score_lib.score_attempt(
+            attempt,
+            scenario,
+            resolved_runs,
+            probe_results=probes,
+            repo_root=repo_root,
+        )
+        score_lib.write_score(primary_path, score_data)
+        stamps = [
+            float(res["passed_ts"])
+            for res in (probes or {}).values()
+            if isinstance(res.get("passed_ts"), (int, float))
+        ]
+        probe_green_ts = (
+            max(stamps) if score_data.get("all_remediated") and stamps else None
+        )
+        timing_data = timings_lib.compute_attempt_timing(
+            attempt,
+            resolved_runs,
+            probe_green_ts=probe_green_ts,
+            repo_root=repo_root,
+        )
+        timings_lib.write_timing(primary_path, timing_data)
+        scored += 1
+    click.echo(f"Scored {scored} attempt(s) in {resolved_runs}")
+
+
+
 if __name__ == "__main__":
     cli()

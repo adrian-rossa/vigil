@@ -1101,7 +1101,7 @@ def _build_traffic_runner(
 
 def _build_noise_runner(
     data: Mapping[str, Any],
-    noise_override: str | None,
+    noise_override: bool | None,
     seed: int,
     kubeconfig: str | None,
 ) -> NoiseRunner | None:

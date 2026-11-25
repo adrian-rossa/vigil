@@ -217,3 +217,88 @@ def test_collision_ignores_retries_but_flags_distinct_incidents(
         score.touched_paths_by_incident(two_incidents, tmp_path)
     ) == ["apps/vigil-app.yaml"]
     assert timings.parse_iso("2026-11-25T10:00:00Z") is not None
+
+
+def test_cli_score_rescores_saved_attempts_offline(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+    from eval.cli import cli
+
+    scenarios_dir = tmp_path / "scenarios"
+    scen_dir = scenarios_dir / "k8s-3g"
+    scen_dir.mkdir(parents=True)
+    (scen_dir / "scenario.yaml").write_text(
+        "id: k8s-3g\n"
+        "faults:\n"
+        "  - id: a\n"
+        "    component: deployment/vigil-app\n"
+        "    expected_action: git_commit_k8s\n"
+        "    root_cause_keywords: [memory, OOM]\n",
+        encoding="utf-8",
+    )
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    (runs_dir / "r1.json").write_text(
+        json.dumps(
+            {
+                "run_id": "r1",
+                "started_at": "2026-11-25T10:00:10Z",
+                "ended_at": "2026-11-25T10:01:00Z",
+                "MTTR_s": 50.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    _write_trace(
+        runs_dir / "r1_trace.jsonl",
+        {"alertname": "KubeContainerOOMKilled"},
+        {
+            "root_cause": "OOM on vigil-app",
+            "root_cause_component": "deployment/vigil-app",
+            "recommended_action": "git_commit_k8s",
+        },
+    )
+    green_ts = timings.parse_iso("2026-11-25T10:01:15Z")
+    (runs_dir / "r1_attempt.json").write_text(
+        json.dumps(
+            {
+                "scenario": "k8s-3g",
+                "seed": 1,
+                "primary_run_id": "r1",
+                "detection_used": "alert",
+                "inject_s": 5.0,
+                "injected_at": "2026-11-25T10:00:00Z",
+                "run_ids": ["r1"],
+                "gaps_s": [],
+                "probe_results": {
+                    "a": {
+                        "remediated": True,
+                        "passed_at": "2026-11-25T10:01:15Z",
+                        "passed_ts": green_ts,
+                        "time_to_restore_s": 75.0,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = CliRunner().invoke(
+        cli,
+        [
+            "score",
+            "--runs-dir",
+            str(runs_dir),
+            "--scenarios-dir",
+            str(scenarios_dir),
+            "--repo-root",
+            str(tmp_path),
+        ],
+    )
+    assert res.exit_code == 0, res.output
+    assert "Scored 1 attempt(s)" in res.output
+    assert json.loads(
+        (runs_dir / "r1_score.json").read_text()
+    )["time_to_last_fix_s"] == 75.0
+    assert json.loads((runs_dir / "r1_timing.json").read_text())["total_s"] == 75.0
+    assert json.loads((runs_dir / "run_map.json").read_text()) == {"r1": "k8s-3g"}

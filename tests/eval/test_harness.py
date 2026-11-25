@@ -1560,6 +1560,9 @@ async def test_run_one_uses_fault_lib_and_writes_attempt_on_timeout(
     attempt = json.loads((runs_dir / "run-1_attempt.json").read_text())
     assert attempt["scenario"] == "lib-pair"
     assert attempt["n_runs"] == 1
+    assert (runs_dir / "run-1_score.json").is_file()
+    assert (runs_dir / "run-1_timing.json").is_file()
+    assert json.loads((runs_dir / "run_map.json").read_text()) == {"run-1": "lib-pair"}
 
 
 async def test_run_one_starts_and_stops_traffic_and_noise_in_order(
