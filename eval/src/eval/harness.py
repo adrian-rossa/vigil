@@ -21,6 +21,8 @@ from orchestrator.agent import MAX_TRIES, _write_run_record, build_run_id, retry
 from orchestrator.models import RunRecord
 
 from eval import faults as fault_lib
+from eval import score as score_lib
+from eval import timings as timings_lib
 from eval.noise import NoiseRunner, excluded_prefixes
 from eval.traffic import SteppedTrafficRunner
 
@@ -855,11 +857,12 @@ def _write_attempt(
     traffic: dict[str, Any] | None = None,
     noise: dict[str, Any] | None = None,
     injected_at: str | None = None,
+    probe_results: dict[str, dict[str, Any]] | None = None,
 ) -> Path: 
     """Persist attempt-level metadata next to the primary run record"""
     attempt_path = path.with_name(f"{path.stem}_attempt.json")
     attempt_path.parent.mkdir(parents=True, exist_ok=True)
-    run_ids = [str(r["run_id"]) for r in records if r.get("run_id")]
+    run_ids = [str(run["run_id"]) for run in records if run.get("run_id")]
     payload = {
         "scenario": scenario_id,
         "seed": seed,
@@ -876,8 +879,53 @@ def _write_attempt(
         payload["traffic"] = traffic
     if noise is not None:
         payload["noise"] = noise
+    if probe_results is not None:
+        payload["probe_results"] = probe_results
     attempt_path.write_text(json.dumps(payload, indent=2) + "\n")
     return attempt_path
+
+
+def _last_probe_green_ts(
+    score_data: Mapping[str, Any],
+    probe_results: Mapping[str, Mapping[str, Any]] | None,
+) -> float | None:
+    if not score_data.get("all_remediated") or not probe_results:
+        return None
+    stamps = [
+        float(result["passed_ts"])
+        for result in probe_results.values()
+        if isinstance(result.get("passed_ts"), (int, float))
+    ]
+    return max(stamps) if stamps else None
+
+
+def _finalize_attempt(
+    attempt_path: Path,
+    attempt_target: Path,
+    scenario: Mapping[str, Any],
+    runs_dir: Path,
+    probe_results: Mapping[str, Mapping[str, Any]] | None,
+    repo_root: Path | None,
+) -> None:
+    """Write run_map.json, score.json and timing.json for one attempt"""
+    attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+    score_lib.update_run_map(runs_dir, attempt)
+    score_data = score_lib.score_attempt(
+        attempt,
+        scenario,
+        runs_dir,
+        probe_results=probe_results,
+        repo_root=repo_root,
+    )
+    score_lib.write_score(attempt_target, score_data)
+    probe_green_ts = _last_probe_green_ts(score_data, probe_results)
+    timing_data = timings_lib.compute_attempt_timing(
+        attempt,
+        runs_dir,
+        probe_green_ts=probe_green_ts,
+        repo_root=repo_root,
+    )
+    timings_lib.write_timing(attempt_target, timing_data)
 
 
 def _in_flight_traces(runs_dir: Path, since: float) -> list[str]:
@@ -1268,7 +1316,18 @@ async def run_one(
                 else None
             )
             if attempt_target is not None:
-                _write_attempt(
+                faults_list = list(data.get("faults") or [])
+                probe_results = (
+                    await asyncio.to_thread(
+                        score_lib.poll_health_probes,
+                        faults_list,
+                        injected_at=injected_at,
+                        kubeconfig=kubeconfig,
+                    )
+                    if faults_list
+                    else None
+                )
+                attempt_path = _write_attempt(
                     attempt_target, 
                     scenario_id, 
                     seed, 
@@ -1279,6 +1338,16 @@ async def run_one(
                     traffic=traffic_summary,
                     noise=noise_summary,
                     injected_at=injected_at,
+                    probe_results=probe_results or None,
+                )
+                repo_root = Path(os.environ.get("VIGIL_REPO_ROOT") or ".")
+                _finalize_attempt(
+                    attempt_path,
+                    attempt_target,
+                    data,
+                    runs_dir,
+                    probe_results or None,
+                    repo_root,
                 )
             log.info("inject_s=%.1f n_runs=%d", inject_s, len(records))
     assert path is not None
