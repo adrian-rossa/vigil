@@ -619,6 +619,7 @@ jobs:
         continue-on-error: true
         env:
           JUDGE_MODEL_NAME: ${{ inputs.judge_model }}
+          LLM_REASONING_EFFORT: low
           ANTHROPIC_API_KEY: ${{ secrets.TF_VAR_ANTHROPIC_API_KEY }}
           OLLAMA_API_KEY: ${{ secrets.TF_VAR_OLLAMA_API_KEY }}
           OLLAMA_BASE_URL: ${{ secrets.TF_VAR_OLLAMA_BASE_URL }}
