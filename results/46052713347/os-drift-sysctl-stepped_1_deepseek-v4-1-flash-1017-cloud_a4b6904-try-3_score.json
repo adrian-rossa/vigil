@@ -1,0 +1,52 @@
+{
+  "scenario": "os-drift-sysctl-stepped",
+  "seed": 1,
+  "primary_run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3",
+  "detection_used": "synthetic",
+  "n_runs": 3,
+  "fault_run_ids": [
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-2",
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3"
+  ],
+  "noise_run_ids": [],
+  "run_alerts": {
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904": {
+      "alertname": "KubePodNotReady",
+      "namespace": "default",
+      "node": "vigil-worker-1"
+    },
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-2": {
+      "alertname": "KubePodNotReady",
+      "namespace": "default",
+      "node": "vigil-worker-1"
+    },
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3": {
+      "alertname": "KubePodNotReady",
+      "namespace": "default",
+      "node": "vigil-worker-1"
+    }
+  },
+  "n_faults": 1,
+  "n_detected": 0,
+  "n_attributed": 0,
+  "n_remediated": 0,
+  "all_remediated": false,
+  "time_to_last_fix_s": null,
+  "collision": false,
+  "colliding_paths": [],
+  "touched_paths_by_incident": {},
+  "faults": [
+    {
+      "id": "a",
+      "component": "vigil-worker-1",
+      "severity": "user_facing",
+      "detected": false,
+      "attributed": false,
+      "remediated": false,
+      "passed_at": null,
+      "time_to_restore_s": null,
+      "touched_paths": []
+    }
+  ]
+}

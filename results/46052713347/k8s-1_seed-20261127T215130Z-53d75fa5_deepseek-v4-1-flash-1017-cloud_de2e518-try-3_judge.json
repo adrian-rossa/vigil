@@ -1,0 +1,175 @@
+{
+  "scenario": "k8s-pair-1-stepped",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T215130Z-53d75fa5_deepseek-v4-1-flash-1017-cloud_de2e518-try-3",
+  "judge_model": "kimi-k3.1-pro:cloud",
+  "checklist_version": "3.0",
+  "temperature": 0.0,
+  "all_attributed": false,
+  "faults": [
+    {
+      "id": "a",
+      "component": "service/app-backend",
+      "verdict": "True",
+      "composite_score": 1.0,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 1.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 1.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 1.0
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "Yes",
+          "evidence": "All diagnoses identify Service/app-backend and its targetPort 8080 as the fault origin.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "Yes",
+          "evidence": "The Service is identified as root cause; vigil-app nginx, readiness probes, and Deployment unavailability are described as downstream effects.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "Yes",
+          "evidence": "No healthy component is blamed as the origin; the diagnosis consistently targets Service/app-backend.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "Yes",
+          "evidence": "The diagnoses identify the Service targetPort mismatch: traffic targets 8080 while the backend listens on port 80.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "Yes",
+          "evidence": "Concrete details include targetPort 8080, container listening on port 80, and the app-backend Service.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "Yes",
+          "evidence": "The attributed fault is precisely the injected service target-port misconfiguration, with no conflicting fault type.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "Yes",
+          "evidence": "Nginx, vigil-app, probes, and the Deployment are treated as downstream impacts, not additional root causes.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "Yes",
+          "evidence": "The diagnosis covers Service/app-backend and the affected vigil-app Deployment, including its nginx and readiness behavior.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "Yes",
+          "evidence": "Connection refusal, nginx 502 responses, failed readiness probes, and unavailable replicas consistently describe the port mismatch impact.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    },
+    {
+      "id": "b",
+      "component": "deployment/kube-prometheus-stack-grafana",
+      "verdict": "False",
+      "composite_score": 0.11,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 0.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 0.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 0.33
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "No",
+          "evidence": "All diagnoses identify Service/app-backend; none names deployment/kube-prometheus-stack-grafana in namespace monitoring.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "No",
+          "evidence": "The diagnoses attribute the fault solely to app-backend's targetPort and do not identify Grafana's nodeSelector as another fault origin.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "No",
+          "evidence": "For Cause 2, the diagnoses miss the faulty Grafana deployment and instead identify only the separate app-backend fault.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "No",
+          "evidence": "The diagnoses describe a targetPort/container-port mismatch, not Grafana's injected nonexistent nodeSelector.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "No",
+          "evidence": "No diagnosis mentions Grafana, nodeSelector, or hostname nonexistent-bogus-node; only ports 8080 and 80 are detailed.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "No",
+          "evidence": "Cause 2 is characterized as an unrelated Service port misconfiguration rather than a Grafana nodeSelector fault.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "Yes",
+          "evidence": "Only app-backend, the other known root cause, is blamed; no uninvolved components are additionally implicated.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "No",
+          "evidence": "The Grafana deployment required for Cause 2 is entirely omitted from every diagnosis.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "No",
+          "evidence": "The stated 502 and readiness-probe impact concerns app-backend, not Grafana's nonexistent-node scheduling failure.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    }
+  ],
+  "relationship": {
+    "expected": "independent",
+    "predicted": "cascading",
+    "correct": false,
+    "evidence": "Service targetPort mismatch causes refused upstream connections, leading to nginx 502 responses, readiness probe failures, and unavailable Deployment replicas.",
+    "unscored_reason": null
+  },
+  "diagnosis_text": "Diagnosis 1:\n root_cause: The app-backend Service declares targetPort 8080 while the app-backend container listens on port 80 (-listen=:80), so Service traffic is refused, causing vigil-app's nginx upstream to return 502 and its readiness probe to fail, leaving the Deployment unavailable. root_cause_component: Service/app-backend:targetPort-8080\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/app-backend.yaml\n evidence: 2; 0; 2; 6; /; 1; 1; /; 2; 7;  ; 2; 1; :; 5; 1; :; 1; 8;  ; [; e; r; r; o; r; ];  ; 4; 2; #; 4; 2; :;  ; *; 9; 6;  ; c; o; n; n; e; c; t; (; );  ; f; a; i; l; e; d;  ; (; 1; 1; 1; :;  ; C; o; n; n; e; c; t; i; o; n;  ; r; e; f; u; s; e; d; );  ; w; h; i; l; e;  ; c; o; n; n; e; c; t; i; n; g;  ; t; o;  ; u; p; s; t; r; e; a; m; ,;  ; c; l; i; e; n; t; :;  ; 1; 0; .; 2; 5; 0; .; 1; 3; 0; .; 1; ,;  ; s; e; r; v; e; r; :;  ; ,;  ; r; e; q; u; e; s; t; :;  ; \"; G; E; T;  ; /; h; e; a; l; t; h; z;  ; H; T; T; P; /; 1; .; 1; \"; ,;  ; u; p; s; t; r; e; a; m; :;  ; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 8; 6; .; 8; 8; :; 8; 0; /; h; e; a; l; t; h; z; \"\n\nDiagnosis 2:\n root_cause: The app-backend Service in git declares targetPort 8080 while the hashicorp/http-echo container listens on port 80, so Service traffic is dialed to a closed port and vigil-app's nginx readiness probe (proxy_pass ${REQUIRED_API_BASE}) fails with 502, leaving the Deployment short of its expected ready replicas. root_cause_component: Service/default/app-backend:targetPort-8080\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/app-backend.yaml\n evidence: 2; 0; 2; 6; /; 1; 1; /; 2; 7;  ; 2; 1; :; 5; 7; :; 1; 7;  ; [; e; r; r; o; r; ];  ; 4; 3; #; 4; 3; :;  ; *; 6; 0; 0; 2; 2;  ; c; o; n; n; e; c; t; (; );  ; f; a; i; l; e; d;  ; (; 1; 1; 1; :;  ; C; o; n; n; e; c; t; i; o; n;  ; r; e; f; u; s; e; d; );  ; w; h; i; l; e;  ; c; o; n; n; e; c; t; i; n; g;  ; t; o;  ; u; p; s; t; r; e; a; m; ,;  ; c; l; i; e; n; t; :;  ; 1; 2; 7; .; 0; .; 0; .; 1; ,;  ; s; e; r; v; e; r; :;  ; ,;  ; r; e; q; u; e; s; t; :;  ; \"; G; E; T;  ; /;  ; H; T; T; P; /; 1; .; 1; \"; ,;  ; u; p; s; t; r; e; a; m; :;  ; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 8; 6; .; 8; 8; :; 8; 0; /; \"; ,;  ; h; o; s; t; :;  ; \"; 1; 2; 7; .; 0; .; 0; .; 1; :; 3; 4; 7; 3; 3; \";  ;  ; |;  ;  ; W; a; r; n; i; n; g;  ; U; n; h; e; a; l; t; h; y;  ; R; e; a; d; i; n; e; s; s;  ; p; r; o; b; e;  ; f; a; i; l; e; d; :;  ; H; T; T; P;  ; p; r; o; b; e;  ; f; a; i; l; e; d;  ; w; i; t; h;  ; s; t; a; t; u; s; c; o; d; e; :;  ; 5; 0; 2\n\nDiagnosis 3:\n root_cause: The app-backend Service in git declares targetPort 8080, but the app-backend container listens on port 80 (`-listen=:80`, containerPort 80), so nginx's proxy to ClusterIP 10.250.86.88:80 is refused, the vigil-app readiness probe on /healthz returns 502, and the Deployment never reaches an available replica. root_cause_component: Service/default/app-backend (targetPort 8080 vs containerPort 80)\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/app-backend.yaml\n evidence: 2; 0; 2; 6; /; 1; 1; /; 2; 7;  ; 2; 2; :; 0; 3; :; 0; 0;  ; [; e; r; r; o; r; ];  ; 4; 3; #; 4; 3; :;  ; *; 1; 2; 7; 2; 1; 6;  ; c; o; n; n; e; c; t; (; );  ; f; a; i; l; e; d;  ; (; 1; 1; 1; :;  ; C; o; n; n; e; c; t; i; o; n;  ; r; e; f; u; s; e; d; );  ; w; h; i; l; e;  ; c; o; n; n; e; c; t; i; n; g;  ; t; o;  ; u; p; s; t; r; e; a; m; ,;  ; c; l; i; e; n; t; :;  ; 1; 2; 7; .; 0; .; 0; .; 1; ,;  ; s; e; r; v; e; r; :;  ; ,;  ; r; e; q; u; e; s; t; :;  ; \"; G; E; T;  ; /;  ; H; T; T; P; /; 1; .; 1; \"; ,;  ; u; p; s; t; r; e; a; m; :;  ; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 8; 6; .; 8; 8; :; 8; 0; /; \"; ,;  ; h; o; s; t; :;  ; \"; 1; 2; 7; .; 0; .; 0; .; 1; :; 3; 4; 7; 3; 3; \""
+}

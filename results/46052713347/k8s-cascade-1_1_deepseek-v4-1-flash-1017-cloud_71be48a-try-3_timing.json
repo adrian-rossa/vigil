@@ -1,0 +1,77 @@
+{
+  "scenario": "k8s-cascade-1",
+  "seed": 1,
+  "primary_run_id": "k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a-try-3",
+  "inject_s": 69.238,
+  "detect_s": 0.0,
+  "diagnosis_s": 41.542,
+  "remediation_s": 48.838,
+  "gate_s": null,
+  "reconcile_s": null,
+  "watchdog_s": 1615.282,
+  "active_run_s": 2354.47,
+  "lock_wait_s": 1873.0,
+  "total_s": 2486.582,
+  "per_run": [
+    {
+      "run_id": "k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a",
+      "inject_s": 69.238,
+      "detect_s": 0.0,
+      "diagnosis_s": 9.094,
+      "remediation_s": 8.631,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 319.797,
+      "active_run_s": 464.775,
+      "total_s": 2486.582
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T204700Z-a30f0066_deepseek-v4-1-flash-1017-cloud_71be48a",
+      "inject_s": 0.0,
+      "detect_s": 472.712,
+      "diagnosis_s": 6.943,
+      "remediation_s": 9.522,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 319.796,
+      "active_run_s": 464.041,
+      "total_s": 2486.582
+    },
+    {
+      "run_id": "k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a-try-2",
+      "inject_s": 0.0,
+      "detect_s": 927.886,
+      "diagnosis_s": 7.893,
+      "remediation_s": 11.381,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 320.526,
+      "active_run_s": 465.893,
+      "total_s": 2486.582
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T204700Z-a30f0066_deepseek-v4-1-flash-1017-cloud_71be48a-try-2",
+      "inject_s": 0.0,
+      "detect_s": 1402.712,
+      "diagnosis_s": 6.461,
+      "remediation_s": 10.267,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 320.727,
+      "active_run_s": 478.252,
+      "total_s": 2486.582
+    },
+    {
+      "run_id": "k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a-try-3",
+      "inject_s": 0.0,
+      "detect_s": 1872.886,
+      "diagnosis_s": 11.151,
+      "remediation_s": 9.037,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 334.436,
+      "active_run_s": 481.509,
+      "total_s": 2486.582
+    }
+  ]
+}

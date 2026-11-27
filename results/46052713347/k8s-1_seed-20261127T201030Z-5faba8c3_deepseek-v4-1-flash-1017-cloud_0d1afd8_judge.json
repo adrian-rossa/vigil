@@ -1,0 +1,91 @@
+{
+  "scenario": "k8s-4g",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T201030Z-5faba8c3_deepseek-v4-1-flash-1017-cloud_0d1afd8",
+  "judge_model": "kimi-k3.1-pro:cloud",
+  "checklist_version": "3.0",
+  "temperature": 0.0,
+  "all_attributed": true,
+  "faults": [
+    {
+      "id": "a",
+      "component": "deployment/vigil-app",
+      "verdict": "True",
+      "composite_score": 1.0,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 1.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 1.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 1.0
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis explicitly identifies Deployment/vigil-app as the root-cause component, matching the ground-truth target.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "Yes",
+          "evidence": "The Deployment is identified as the origin; the unschedulable ReplicaSet pod is described only as the resulting symptom.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "Yes",
+          "evidence": "No healthy or unrelated component is blamed; diagnosis consistently attributes the fault to vigil-app's Deployment configuration.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis identifies an invalid nodeSelector preventing scheduling, exactly matching the injected wrong-selector mechanism.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "Yes",
+          "evidence": "It specifies kubernetes.io/hostname=nonexistent-bogus-node and provides the exact ground-truth manifest path.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "Yes",
+          "evidence": "The diagnosis attributes the failure solely to the unmatched nodeSelector and introduces no conflicting fault type.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "Yes",
+          "evidence": "No additional components are blamed; scheduler and ReplicaSet references only explain the Deployment mutation's consequences.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "Yes",
+          "evidence": "The affected vigil-app Deployment and its Pending pod are explicitly identified, covering the ground-truth scope.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "Yes",
+          "evidence": "Diagnosis states the pod remains Pending because no cluster node matches the selector, matching the stated impact.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    }
+  ],
+  "relationship": null,
+  "diagnosis_text": "Diagnosis 1:\n root_cause: The vigil-app Deployment's pod template declares a nodeSelector of kubernetes.io/hostname=nonexistent-bogus-node, a hostname that matches no node in the cluster, so the scheduler cannot place the new ReplicaSet's pod (vigil-app-5c699c5c85-zx6f9), which stays Pending 0/2. root_cause_component: Deployment/vigil-app (nodeSelector kubernetes.io/hostname=nonexistent-bogus-node)\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml\n evidence: W; a; r; n; i; n; g; \t; F; a; i; l; e; d; S; c; h; e; d; u; l; i; n; g; \t; P; o; d; /; v; i; g; i; l; -; a; p; p; -; 5; c; 6; 9; 9; c; 5; c; 8; 5; -; z; x; 6; f; 9; \t; 0; /; 3;  ; n; o; d; e; s;  ; a; r; e;  ; a; v; a; i; l; a; b; l; e; :;  ; 3;  ; n; o; d; e; (; s; );  ; d; i; d; n; '; t;  ; m; a; t; c; h;  ; P; o; d; '; s;  ; n; o; d; e;  ; a; f; f; i; n; i; t; y; /; s; e; l; e; c; t; o; r; .;  ; n; o;  ; n; e; w;  ; c; l; a; i; m; s;  ; t; o;  ; d; e; a; l; l; o; c; a; t; e; ,;  ; p; r; e; e; m; p; t; i; o; n; :;  ; 0; /; 3;  ; n; o; d; e; s;  ; a; r; e;  ; a; v; a; i; l; a; b; l; e; :;  ; 3;  ; P; r; e; e; m; p; t; i; o; n;  ; i; s;  ; n; o; t;  ; h; e; l; p; f; u; l;  ; f; o; r;  ; s; c; h; e; d; u; l; i; n; g; ."
+}

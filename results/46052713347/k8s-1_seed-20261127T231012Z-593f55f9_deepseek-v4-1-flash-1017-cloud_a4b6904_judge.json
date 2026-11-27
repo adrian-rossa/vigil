@@ -1,0 +1,64 @@
+{
+  "scenario": "cross-pair-1-noise",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T231012Z-593f55f9_deepseek-v4-1-flash-1017-cloud_a4b6904",
+  "judge_model": "kimi-k3.1-pro:cloud",
+  "checklist_version": "3.0",
+  "temperature": 0.0,
+  "all_attributed": false,
+  "faults": [
+    {
+      "id": "a",
+      "component": "vigil-worker-1",
+      "verdict": "False",
+      "composite_score": 0.0,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 0.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 0.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 0.0
+        }
+      },
+      "checklist": [],
+      "unscored_reason": null,
+      "raw_response": ""
+    },
+    {
+      "id": "b",
+      "component": "deployment/kube-prometheus-stack-grafana",
+      "verdict": "False",
+      "composite_score": 0.0,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 0.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 0.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 0.0
+        }
+      },
+      "checklist": [],
+      "unscored_reason": null,
+      "raw_response": ""
+    }
+  ],
+  "relationship": {
+    "expected": "independent",
+    "predicted": "unknown",
+    "correct": false,
+    "unscored_reason": null
+  },
+  "diagnosis_text": ""
+}

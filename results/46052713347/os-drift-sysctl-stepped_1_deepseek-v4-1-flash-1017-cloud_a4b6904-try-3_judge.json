@@ -1,0 +1,91 @@
+{
+  "scenario": "os-drift-sysctl-stepped",
+  "seed": 1,
+  "primary_run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3",
+  "judge_model": "kimi-k3.1-pro:cloud",
+  "checklist_version": "3.0",
+  "temperature": 0.0,
+  "all_attributed": false,
+  "faults": [
+    {
+      "id": "a",
+      "component": "vigil-worker-1",
+      "verdict": "False",
+      "composite_score": 0.11,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 0.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 0.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 0.33
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "No",
+          "evidence": "Diagnosis blames Deployment/vigil-app and its mem-load sidecar, not the ground-truth fault origin vigil-worker-1.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "No",
+          "evidence": "It identifies the application Deployment and sidecar as root cause rather than runtime sysctl drift on vigil-worker-1.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "No",
+          "evidence": "It misidentifies vigil-app's mem-load sidecar and memory configuration as the fault origin.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "No",
+          "evidence": "It describes memory-stress injection and readiness starvation, not net.bridge.bridge-nf-call-iptables sysctl drift.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "No",
+          "evidence": "It cites stress-ng arguments and memory limits, omitting the mutated sysctl key, value 0, and restore value 1.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "No",
+          "evidence": "The diagnosis attributes the failure to an unrelated memory-pressure fault instead of runtime sysctl misconfiguration.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "No",
+          "evidence": "It blames an uninvolved mem-load sidecar, nginx memory starvation, and Deployment manifest configuration.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "Yes",
+          "evidence": "Across the diagnoses, both vigil-app and vigil-worker-1 are explicitly mentioned, although their fault roles are incorrect.",
+          "confidence": "Medium"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "No",
+          "evidence": "It describes memory pressure and readiness timeouts, whereas the ground truth states sysctl drift broke pod networking.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    }
+  ],
+  "relationship": null,
+  "diagnosis_text": "Diagnosis 1:\n root_cause: The declared manifest in git injects a stress-ng `mem-load` sidecar (--vm 1 --vm-keep --vm-bytes 50M) into the vigil-app pod alongside a 128Mi memory limit on the nginx container, and the resulting pod-cgroup memory pressure stalls nginx so its /healthz readiness probe exceeds the 1s timeout, holding the Deployment permanently at readyReplicas=0. root_cause_component: Deployment/vigil-app\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml\n evidence: W; a; r; n; i; n; g;  ;  ;  ; U; n; h; e; a; l; t; h; y;  ;  ;  ; P; o; d; /; v; i; g; i; l; -; a; p; p; -; 6; d; b; 9; 8; d; 5; 6; 9; b; -; s; 4; b; 6; s;  ;  ;  ; R; e; a; d; i; n; e; s; s;  ; p; r; o; b; e;  ; f; a; i; l; e; d; :;  ; G; e; t;  ; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 1; 3; 1; .; 5; :; 8; 0; /; h; e; a; l; t; h; z; \"; :;  ; c; o; n; t; e; x; t;  ; d; e; a; d; l; i; n; e;  ; e; x; c; e; e; d; e; d;  ; (; C; l; i; e; n; t; .; T; i; m; e; o; u; t;  ; e; x; c; e; e; d; e; d;  ; w; h; i; l; e;  ; a; w; a; i; t; i; n; g;  ; h; e; a; d; e; r; s; )\n\nDiagnosis 2:\n root_cause: The vigil-app Deployment manifest in git declares a `mem-load` stress-ng sidecar (`--vm 1 --vm-bytes 50M --vm-keep --timeout 0`) that pins memory pressure on the 3.9Gi vigil-worker-1 node, starving the nginx container so its /healthz readiness probe exceeds the 1s timeout. root_cause_component: Deployment/vigil-app:mem-load\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml\n evidence: 1; 2; 0; s;  ;  ;  ; W; a; r; n; i; n; g;  ;  ;  ; U; n; h; e; a; l; t; h; y;  ;  ;  ;  ;  ;  ;  ;  ;  ;  ;  ;  ;  ; R; e; a; d; i; n; e; s; s;  ; p; r; o; b; e;  ; f; a; i; l; e; d; :;  ; G; e; t;  ; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 1; 3; 1; .; 2; 0; :; 8; 0; /; h; e; a; l; t; h; z; \"; :;  ; c; o; n; t; e; x; t;  ; d; e; a; d; l; i; n; e;  ; e; x; c; e; e; d; e; d;  ; (; C; l; i; e; n; t; .; T; i; m; e; o; u; t;  ; e; x; c; e; e; d; e; d;  ; w; h; i; l; e;  ; a; w; a; i; t; i; n; g;  ; h; e; a; d; e; r; s; )\n\nDiagnosis 3:\n root_cause: The declared Deployment for vigil-app schedules an unbounded memory-stress sidecar (stress-ng --vm 1 --vm-bytes 50M --vm-keep --timeout 0, limits memory 96Mi) in the same pod as the nginx container on vigil-worker-1, starving nginx so its /healthz proxy_pass to app-backend times out and the readiness probe never passes; app-backend itself answers /healthz with HTTP 200 in microseconds, and the node is Ready with no taints or pressure. root_cause_component: Deployment/vigil-app (mem-load sidecar, ghcr.io/colinianking/stress-ng, --timeout 0)\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml\n evidence: 2; 0; 2; 6; /; 1; 1; /; 2; 7;  ; 2; 3; :; 4; 4; :; 0; 8;  ; [; e; r; r; o; r; ];  ; 4; 2; #; 4; 2; :;  ; *; 1; 4; 4; 1; 9; 5;  ; u; p; s; t; r; e; a; m;  ; t; i; m; e; d;  ; o; u; t;  ; (; 1; 1; 0; :;  ; C; o; n; n; e; c; t; i; o; n;  ; t; i; m; e; d;  ; o; u; t; );  ; w; h; i; l; e;  ; c; o; n; n; e; c; t; i; n; g;  ; t; o;  ; u; p; s; t; r; e; a; m; ,;  ; c; l; i; e; n; t; :;  ; 1; 2; 7; .; 0; .; 0; .; 1; ,;  ; s; e; r; v; e; r; :;  ; ,;  ; r; e; q; u; e; s; t; :;  ; \"; G; E; T;  ; /;  ; H; T; T; P; /; 1; .; 1; \"; ,;  ; u; p; s; t; r; e; a; m; :;  ; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 8; 7; .; 6; 8; :; 8; 0; /; \"; ,;  ; h; o; s; t; :;  ; \"; 1; 2; 7; .; 0; .; 0; .; 1; :; 3; 6; 1; 2; 1; \";  ; \u2014;  ; w; i; t; h;  ; r; e; a; d; i; n; e; s; s;  ; p; r; o; b; e;  ; e; v; e; n; t; :;  ; \"; W; a; r; n; i; n; g;  ; U; n; h; e; a; l; t; h; y;  ; R; e; a; d; i; n; e; s; s;  ; p; r; o; b; e;  ; f; a; i; l; e; d; :;  ; G; e; t;  ; \\; \"; h; t; t; p; :; /; /; 1; 0; .; 2; 5; 0; .; 1; 3; 1; .; 5; :; 8; 0; /; h; e; a; l; t; h; z; \\; \"; :;  ; c; o; n; t; e; x; t;  ; d; e; a; d; l; i; n; e;  ; e; x; c; e; e; d; e; d;  ; (; C; l; i; e; n; t; .; T; i; m; e; o; u; t;  ; e; x; c; e; e; d; e; d;  ; w; h; i; l; e;  ; a; w; a; i; t; i; n; g;  ; h; e; a; d; e; r; s; ); \";  ; w; h; i; l; e;  ; a; p; p; -; b; a; c; k; e; n; d;  ; l; o; g; s;  ; \"; G; E; T;  ; /; h; e; a; l; t; h; z;  ; H; T; T; P; /; 1; .; 1; \";  ; 2; 0; 0;  ; 3;  ; \"; k; u; b; e; -; p; r; o; b; e; /; 1; .; 3; 6; \";  ; 1; 8; .; 6; 1; 6; \u00b5; s"
+}

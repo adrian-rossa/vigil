@@ -1,0 +1,53 @@
+{
+  "scenario": "os-drift-sysctl-stepped",
+  "seed": 1,
+  "primary_run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3",
+  "inject_s": 0.145,
+  "detect_s": 0.0,
+  "diagnosis_s": 32.344,
+  "remediation_s": 30.978,
+  "gate_s": null,
+  "reconcile_s": null,
+  "watchdog_s": 494.66,
+  "active_run_s": 943.53,
+  "lock_wait_s": 771.0,
+  "total_s": 940.0,
+  "per_run": [
+    {
+      "run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+      "inject_s": 0.145,
+      "detect_s": 0.0,
+      "diagnosis_s": 7.704,
+      "remediation_s": 11.663,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 320.142,
+      "active_run_s": 467.769,
+      "total_s": 464.0
+    },
+    {
+      "run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-2",
+      "inject_s": 0.0,
+      "detect_s": 467.115,
+      "diagnosis_s": 9.881,
+      "remediation_s": 8.814,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 154.953,
+      "active_run_s": 302.352,
+      "total_s": 766.0
+    },
+    {
+      "run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3",
+      "inject_s": 0.0,
+      "detect_s": 770.115,
+      "diagnosis_s": 14.759,
+      "remediation_s": 10.501,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 19.565,
+      "active_run_s": 173.409,
+      "total_s": 940.0
+    }
+  ]
+}

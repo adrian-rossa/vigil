@@ -1,0 +1,62 @@
+{
+  "scenario": "k8s-pair-1",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T201629Z-c05ae861_deepseek-v4-1-flash-1017-cloud_5b08fff",
+  "detection_used": "alert",
+  "n_runs": 4,
+  "fault_run_ids": [
+    "k8s-1_seed-20261127T201629Z-c05ae861_deepseek-v4-1-flash-1017-cloud_5b08fff",
+    "k8s-1_seed-20261127T201636Z-977bbb8e_deepseek-v4-1-flash-1017-cloud_5b08fff",
+    "k8s-1_seed-20261127T201645Z-d9841299_deepseek-v4-1-flash-1017-cloud_5b08fff",
+    "k8s-1_seed-20261127T201700Z-3369c9ff_deepseek-v4-1-flash-1017-cloud_5b08fff"
+  ],
+  "noise_run_ids": [],
+  "run_alerts": {
+    "k8s-1_seed-20261127T201700Z-3369c9ff_deepseek-v4-1-flash-1017-cloud_5b08fff": {
+      "alertname": "KubeDeploymentReplicasMismatch",
+      "container": "kube-state-metrics",
+      "deployment": "vigil-app",
+      "endpoint": "http",
+      "instance": "10.250.129.11:8080",
+      "job": "kube-state-metrics",
+      "namespace": "default",
+      "pod": "kube-prometheus-stack-kube-state-metrics-f8ddc6f78-qbwnf",
+      "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+      "service": "kube-prometheus-stack-kube-state-metrics",
+      "severity": "warning"
+    }
+  },
+  "n_faults": 2,
+  "n_detected": 1,
+  "n_attributed": 1,
+  "n_remediated": 1,
+  "all_remediated": false,
+  "time_to_last_fix_s": null,
+  "collision": false,
+  "colliding_paths": [],
+  "touched_paths_by_incident": {},
+  "faults": [
+    {
+      "id": "a",
+      "component": "service/app-backend",
+      "severity": "user_facing",
+      "detected": true,
+      "attributed": true,
+      "remediated": false,
+      "passed_at": null,
+      "time_to_restore_s": null,
+      "touched_paths": []
+    },
+    {
+      "id": "b",
+      "component": "deployment/kube-prometheus-stack-grafana",
+      "severity": "internal",
+      "detected": false,
+      "attributed": false,
+      "remediated": true,
+      "passed_at": "2026-11-27T20:27:00Z",
+      "time_to_restore_s": 527.938,
+      "touched_paths": []
+    }
+  ]
+}

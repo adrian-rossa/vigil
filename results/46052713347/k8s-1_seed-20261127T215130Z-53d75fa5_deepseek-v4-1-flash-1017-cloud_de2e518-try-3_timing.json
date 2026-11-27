@@ -1,0 +1,89 @@
+{
+  "scenario": "k8s-pair-1-stepped",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T215130Z-53d75fa5_deepseek-v4-1-flash-1017-cloud_de2e518-try-3",
+  "inject_s": 191.036,
+  "detect_s": 9.712,
+  "diagnosis_s": 27.594,
+  "remediation_s": 30.913,
+  "gate_s": 0.0,
+  "reconcile_s": 0.0,
+  "watchdog_s": 958.641,
+  "active_run_s": 1026.53,
+  "lock_wait_s": 1025.0,
+  "total_s": 976.0,
+  "per_run": [
+    {
+      "run_id": "k8s-1_seed-20261127T215130Z-53d75fa5_deepseek-v4-1-flash-1017-cloud_de2e518",
+      "inject_s": 191.036,
+      "detect_s": 9.712,
+      "diagnosis_s": 10.843,
+      "remediation_s": 10.362,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 319.954,
+      "active_run_s": 343.155,
+      "total_s": 293.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T215230Z-ee312b32_deepseek-v4-1-flash-1017-cloud_de2e518",
+      "inject_s": 0.0,
+      "detect_s": 293.0,
+      "diagnosis_s": null,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 1.024,
+      "total_s": 294.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T215130Z-53d75fa5_deepseek-v4-1-flash-1017-cloud_de2e518-try-2",
+      "inject_s": 0.0,
+      "detect_s": 353.712,
+      "diagnosis_s": 10.039,
+      "remediation_s": 10.676,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 319.457,
+      "active_run_s": 342.227,
+      "total_s": 636.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T215800Z-3743d80a_deepseek-v4-1-flash-1017-cloud_de2e518",
+      "inject_s": 0.0,
+      "detect_s": 636.0,
+      "diagnosis_s": null,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 1.004,
+      "total_s": 637.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T215130Z-53d75fa5_deepseek-v4-1-flash-1017-cloud_de2e518-try-3",
+      "inject_s": 0.0,
+      "detect_s": 696.712,
+      "diagnosis_s": 6.712,
+      "remediation_s": 9.875,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 319.23,
+      "active_run_s": 338.18,
+      "total_s": 975.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T220300Z-9d74f2fb_deepseek-v4-1-flash-1017-cloud_de2e518",
+      "inject_s": 0.0,
+      "detect_s": 975.0,
+      "diagnosis_s": null,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 0.94,
+      "total_s": 976.0
+    }
+  ]
+}

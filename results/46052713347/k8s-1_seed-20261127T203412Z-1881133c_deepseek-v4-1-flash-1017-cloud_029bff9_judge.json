@@ -1,0 +1,175 @@
+{
+  "scenario": "k8s-pair-samefile-1",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T203412Z-1881133c_deepseek-v4-1-flash-1017-cloud_029bff9",
+  "judge_model": "kimi-k3.1-pro:cloud",
+  "checklist_version": "3.0",
+  "temperature": 0.0,
+  "all_attributed": false,
+  "faults": [
+    {
+      "id": "a",
+      "component": "deployment/vigil-app",
+      "verdict": "True",
+      "composite_score": 1.0,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 1.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 1.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 1.0
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis identifies Deployment/vigil-app and specifically its mem-load container, matching the ground-truth target component.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "Yes",
+          "evidence": "The mem-load container's memory limit is identified as the origin; no downstream component is blamed instead.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "Yes",
+          "evidence": "Only the faulty vigil-app mem-load container is identified; no healthy component is misidentified as the origin.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis correctly identifies an excessive memory allocation against the container memory limit, causing cgroup OOMKills.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "Yes",
+          "evidence": "Concrete details include the 32Mi memory limit, 50MB allocated per stress-ng VM worker, and repeated OOMKills.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "Yes",
+          "evidence": "The diagnosis consistently attributes the fault to container memory limits and OOMKills, with no unrelated fault type.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "Yes",
+          "evidence": "No uninvolved components are blamed; attribution remains scoped to Deployment/vigil-app's mem-load container.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "Yes",
+          "evidence": "All Cause 1 components are covered: Deployment/vigil-app and its mem-load container with the 32Mi limit.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "Yes",
+          "evidence": "The stated impact\u2014exceeding the cgroup memory limit and being OOMKilled on every restart\u2014matches the ground truth.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    },
+    {
+      "id": "b",
+      "component": "deployment/vigil-app",
+      "verdict": "False",
+      "composite_score": 0.56,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 1.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 0.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 0.67
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis names Deployment/vigil-app, matching the ground-truth target component.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "Yes",
+          "evidence": "Diagnosis points to the vigil-app Deployment itself rather than a downstream victim component.",
+          "confidence": "Medium"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "Yes",
+          "evidence": "The named mem-load container is the other known fault origin, not an uninvolved healthy component.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "No",
+          "evidence": "Diagnosis identifies a memory-limit OOM mechanism, not the vigil-app readiness probe port misconfiguration.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "No",
+          "evidence": "It gives 32Mi and 50MB memory details but omits the mutated readiness probe port 8080.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "No",
+          "evidence": "The diagnosis attributes Cause 2 to container memory exhaustion, an unrelated fault type for this cause.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "Yes",
+          "evidence": "No uninvolved components are blamed; mem-load belongs to the other known root cause.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "Yes",
+          "evidence": "The diagnosis includes Deployment/vigil-app, the component specified for Cause 2.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "No",
+          "evidence": "Repeated OOMKills are described, rather than readiness failure caused by the probe targeting port 8080.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    }
+  ],
+  "relationship": {
+    "expected": "independent",
+    "predicted": "single",
+    "correct": false,
+    "evidence": "One root cause: mem-load memory limit too low for stress-ng allocation, causing repeated OOMKills; no other faults or relationships described.",
+    "unscored_reason": null
+  },
+  "diagnosis_text": "Diagnosis 1:\n root_cause: The declared Deployment sets the mem-load container's memory limit to 32Mi while the stress-ng command allocates 50MB per VM worker, so the container exceeds its cgroup memory limit and is OOMKilled on every restart; git must be fixed by raising the limit. root_cause_component: Deployment/vigil-app:mem-load\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml\n evidence: s; t; r; e; s; s; -; n; g; :;  ; i; n; f; o; :;  ;  ; [; 8; ];  ; v; m; :;  ; u; s; i; n; g;  ; 5; 0; M; B;  ; p; e; r;  ; s; t; r; e; s; s; o; r;  ; i; n; s; t; a; n; c; e;  ; (; t; o; t; a; l;  ; 5; 0; M; B;  ; o; f;  ; 6; 9; 7; .; 2; 6; M; B;  ; a; v; a; i; l; a; b; l; e;  ; m; e; m; o; r; y; )"
+}

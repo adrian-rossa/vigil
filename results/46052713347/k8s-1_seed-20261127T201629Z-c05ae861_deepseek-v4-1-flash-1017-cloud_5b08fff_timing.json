@@ -1,0 +1,65 @@
+{
+  "scenario": "k8s-pair-1",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T201629Z-c05ae861_deepseek-v4-1-flash-1017-cloud_5b08fff",
+  "inject_s": 191.033,
+  "detect_s": 0.0,
+  "diagnosis_s": 9.966,
+  "remediation_s": 7.944,
+  "gate_s": 0.0,
+  "reconcile_s": 0.0,
+  "watchdog_s": 319.516,
+  "active_run_s": 342.096,
+  "lock_wait_s": 31.0,
+  "total_s": 266.0,
+  "per_run": [
+    {
+      "run_id": "k8s-1_seed-20261127T201629Z-c05ae861_deepseek-v4-1-flash-1017-cloud_5b08fff",
+      "inject_s": 191.033,
+      "detect_s": 0.0,
+      "diagnosis_s": null,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 0.905,
+      "total_s": 0.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T201636Z-977bbb8e_deepseek-v4-1-flash-1017-cloud_5b08fff",
+      "inject_s": 0.0,
+      "detect_s": 0.0,
+      "diagnosis_s": null,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 0.769,
+      "total_s": 0.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T201645Z-d9841299_deepseek-v4-1-flash-1017-cloud_5b08fff",
+      "inject_s": 0.0,
+      "detect_s": 0.0,
+      "diagnosis_s": null,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 0.809,
+      "total_s": 0.0
+    },
+    {
+      "run_id": "k8s-1_seed-20261127T201700Z-3369c9ff_deepseek-v4-1-flash-1017-cloud_5b08fff",
+      "inject_s": 0.0,
+      "detect_s": 9.712,
+      "diagnosis_s": 9.966,
+      "remediation_s": 7.944,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 319.516,
+      "active_run_s": 339.613,
+      "total_s": 266.0
+    }
+  ]
+}

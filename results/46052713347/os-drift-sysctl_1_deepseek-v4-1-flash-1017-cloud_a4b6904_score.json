@@ -1,0 +1,54 @@
+{
+  "scenario": "os-drift-sysctl",
+  "seed": 1,
+  "primary_run_id": "os-drift-sysctl_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+  "detection_used": "synthetic",
+  "n_runs": 2,
+  "fault_run_ids": [
+    "k8s-1_seed-20261127T222112Z-564b0bd6_deepseek-v4-1-flash-1017-cloud_a4b6904",
+    "os-drift-sysctl_1_deepseek-v4-1-flash-1017-cloud_a4b6904"
+  ],
+  "noise_run_ids": [],
+  "run_alerts": {
+    "k8s-1_seed-20261127T222112Z-564b0bd6_deepseek-v4-1-flash-1017-cloud_a4b6904": {
+      "alertname": "KubeDeploymentReplicasMismatch",
+      "container": "kube-state-metrics",
+      "deployment": "vigil-app",
+      "endpoint": "http",
+      "instance": "10.250.128.10:8080",
+      "job": "kube-state-metrics",
+      "namespace": "default",
+      "pod": "kube-prometheus-stack-kube-state-metrics-f8ddc6f78-zrz8p",
+      "prometheus": "monitoring/kube-prometheus-stack-prometheus",
+      "service": "kube-prometheus-stack-kube-state-metrics",
+      "severity": "warning"
+    },
+    "os-drift-sysctl_1_deepseek-v4-1-flash-1017-cloud_a4b6904": {
+      "alertname": "KubePodNotReady",
+      "namespace": "default",
+      "node": "vigil-worker-1"
+    }
+  },
+  "n_faults": 1,
+  "n_detected": 0,
+  "n_attributed": 0,
+  "n_remediated": 0,
+  "all_remediated": false,
+  "time_to_last_fix_s": null,
+  "collision": false,
+  "colliding_paths": [],
+  "touched_paths_by_incident": {},
+  "faults": [
+    {
+      "id": "a",
+      "component": "vigil-worker-1",
+      "severity": "user_facing",
+      "detected": false,
+      "attributed": false,
+      "remediated": false,
+      "passed_at": null,
+      "time_to_restore_s": null,
+      "touched_paths": []
+    }
+  ]
+}

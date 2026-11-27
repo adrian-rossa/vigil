@@ -1,0 +1,36 @@
+{
+  "scenario": "os-portrange-1",
+  "seed": 1,
+  "primary_run_id": "os-portrange-1_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+  "detection_used": "synthetic",
+  "inject_s": 0.11,
+  "n_runs": 1,
+  "run_ids": [
+    "os-portrange-1_1_deepseek-v4-1-flash-1017-cloud_a4b6904"
+  ],
+  "gaps_s": [],
+  "injected_at": "2026-11-27T22:59:32Z",
+  "traffic": {
+    "profile": [
+      50,
+      200,
+      50
+    ],
+    "duration_s": 132.443,
+    "total_requests": 16119,
+    "ok_2xx": 0,
+    "errors": 16119,
+    "error_rate": 1.0,
+    "p50_ms": 2008.01,
+    "p95_ms": 2015.54,
+    "p99_ms": 2051.02
+  },
+  "probe_results": {
+    "a": {
+      "remediated": false,
+      "passed_at": null,
+      "passed_ts": null,
+      "time_to_restore_s": null
+    }
+  }
+}

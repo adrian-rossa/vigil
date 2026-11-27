@@ -1,0 +1,91 @@
+{
+  "scenario": "k8s-3g-stepped",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T214442Z-a979aa18_deepseek-v4-1-flash-1017-cloud_7a00507",
+  "judge_model": "kimi-k3.1-pro:cloud",
+  "checklist_version": "3.0",
+  "temperature": 0.0,
+  "all_attributed": true,
+  "faults": [
+    {
+      "id": "a",
+      "component": "deployment/vigil-app",
+      "verdict": "True",
+      "composite_score": 1.0,
+      "dimensions": {
+        "D1": {
+          "name": "Fault Localization",
+          "score": 1.0
+        },
+        "D2": {
+          "name": "Fault Characterization",
+          "score": 1.0
+        },
+        "D3": {
+          "name": "Scope Precision",
+          "score": 1.0
+        }
+      },
+      "checklist": [
+        {
+          "id": "D1-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis names Deployment/vigil-app and its mem-load sidecar, matching the ground-truth target component.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q2",
+          "answer": "Yes",
+          "evidence": "Diagnosis identifies mem-load in Deployment/vigil-app as the root cause, not a downstream or secondary component.",
+          "confidence": "High"
+        },
+        {
+          "id": "D1-Q3",
+          "answer": "Yes",
+          "evidence": "No healthy or unrelated component is blamed; the diagnosed component exactly matches the fault specification.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q1",
+          "answer": "Yes",
+          "evidence": "Diagnosis identifies an insufficient container memory limit causing OOMKilled restarts, matching the injected memory-limit mechanism.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q2",
+          "answer": "Yes",
+          "evidence": "Diagnosis specifies mem-load, resources.limits.memory: 32Mi, and the 50M stress-ng allocation.",
+          "confidence": "High"
+        },
+        {
+          "id": "D2-Q3",
+          "answer": "Yes",
+          "evidence": "The diagnosis attributes failure solely to the memory limit versus workload allocation, with no conflicting fault type.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q1",
+          "answer": "Yes",
+          "evidence": "Only Deployment/vigil-app's mem-load sidecar is blamed; no uninvolved components are identified as contributors.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q2",
+          "answer": "Yes",
+          "evidence": "Both ground-truth elements, Deployment/vigil-app and container mem-load, are explicitly included.",
+          "confidence": "High"
+        },
+        {
+          "id": "D3-Q3",
+          "answer": "Yes",
+          "evidence": "Repeated OOMKilled restarts from 50M allocation exceeding the 32Mi cgroup limit are consistent with the injected mutation.",
+          "confidence": "High"
+        }
+      ],
+      "unscored_reason": null,
+      "raw_response": ""
+    }
+  ],
+  "relationship": null,
+  "diagnosis_text": "Diagnosis 1:\n root_cause: The mem-load sidecar in Deployment/vigil-app is declared in git to run stress-ng with --vm-bytes 50M while its own container memory limit is only 32Mi, so the in-container allocation always exceeds the cgroup limit and the kernel kills the process, producing repeated OOMKilled restarts. root_cause_component: Deployment/vigil-app:mem-load\n recommended_action: git_commit_k8s\n manifest_path: infra/overlays/hetzner/kubernetes/clusters/hetzner/apps/vigil-app.yaml\n evidence: s; t; r; e; s; s; -; n; g; :;  ; i; n; f; o; :;  ;  ; [; 7; ];  ; v; m; :;  ; u; s; i; n; g;  ; 5; 0; M; B;  ; p; e; r;  ; s; t; r; e; s; s; o; r;  ; i; n; s; t; a; n; c; e;  ; (; t; o; t; a; l;  ; 5; 0; M; B;  ; o; f;  ; 8; 0; 8; .; 8; 8; M; B;  ; a; v; a; i; l; a; b; l; e;  ; m; e; m; o; r; y; );  ; \u2014;  ; w; i; t; h;  ; P; o; d;  ; e; v; e; n; t;  ; \"; W; a; r; n; i; n; g;  ;  ;  ; B; a; c; k; O; f; f;  ;  ;  ; P; o; d; /; v; i; g; i; l; -; a; p; p; -; 6; 4; 9; 4; 9; f; 8; 6; 8; 8; -; 6; g; k; t; r;  ;  ;  ; B; a; c; k; -; o; f; f;  ; r; e; s; t; a; r; t; i; n; g;  ; f; a; i; l; e; d;  ; c; o; n; t; a; i; n; e; r;  ; m; e; m; -; l; o; a; d;  ; .; .; .;  ; R; e; s; t; a; r; t; C; o; u; n; t; =; 3; \"; ,;  ; w; h; i; l; e;  ; t; h; e;  ; c; o; n; t; a; i; n; e; r;  ; d; e; c; l; a; r; e; s;  ; r; e; s; o; u; r; c; e; s; .; l; i; m; i; t; s; .; m; e; m; o; r; y; :;  ; 3; 2; M; i"
+}

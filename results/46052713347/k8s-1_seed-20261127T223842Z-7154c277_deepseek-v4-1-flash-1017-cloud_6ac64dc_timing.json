@@ -1,0 +1,29 @@
+{
+  "scenario": "cross-pair-1",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T223842Z-7154c277_deepseek-v4-1-flash-1017-cloud_6ac64dc",
+  "inject_s": 159.127,
+  "detect_s": 9.176,
+  "diagnosis_s": 10.994,
+  "remediation_s": 1.353,
+  "gate_s": 0.0,
+  "reconcile_s": 0.0,
+  "watchdog_s": 299.199,
+  "active_run_s": 313.103,
+  "lock_wait_s": 0.0,
+  "total_s": 287.0,
+  "per_run": [
+    {
+      "run_id": "k8s-1_seed-20261127T223842Z-7154c277_deepseek-v4-1-flash-1017-cloud_6ac64dc",
+      "inject_s": 159.127,
+      "detect_s": 9.176,
+      "diagnosis_s": 10.994,
+      "remediation_s": 1.353,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 299.199,
+      "active_run_s": 313.103,
+      "total_s": 287.0
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "run_id": "k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a-try-3",
+  "scenario": "k8s-cascade-1",
+  "seed": "1",
+  "model": "deepseek-v4.1-flash:1017-cloud",
+  "git_sha7": "71be48a",
+  "started_at": "2026-11-27T21:18:12Z",
+  "ended_at": "2026-11-27T21:24:08Z",
+  "outcome": "rollback_succeeded",
+  "success_rate": false,
+  "remediation_success": true,
+  "diagnosis_accuracy": true,
+  "MTTR_s": 481.5087194560001,
+  "destructive_repair": false,
+  "rollback_triggered": true,
+  "rollback_success": true,
+  "total_input_tokens": 122613,
+  "total_output_tokens": 3303,
+  "total_tool_calls": 19,
+  "iteration_count": 7,
+  "autonomy_level": "full",
+  "actions_taken": [
+    "read_file",
+    "write_manifest",
+    "commit_files",
+    "push_branch",
+    "create_pr",
+    "final_result"
+  ],
+  "attempts": 3,
+  "incident_id": "k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a",
+  "retry_queued": false,
+  "model_version": "deepseek-v4.1-flash:1017-cloud",
+  "setup_error": null,
+  "agent_branch": "remediation/run-k8s-cascade-1_1_deepseek-v4-1-flash-1017-cloud_71be48a-try-3",
+  "agent_commits": [
+    "971e6136ded36fe841cf4f307a215a2c1b9e868c"
+  ],
+  "gate_status": "merged",
+  "merge_commit_sha": "bef9356797e2fafa3609b72beb91719a92052230",
+  "forbidden_action_violations": [],
+  "target": "hetzner"
+}

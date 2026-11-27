@@ -1,0 +1,29 @@
+{
+  "scenario": "os-portrange-1",
+  "seed": 1,
+  "primary_run_id": "os-portrange-1_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+  "inject_s": 0.11,
+  "detect_s": 0.0,
+  "diagnosis_s": 7.395,
+  "remediation_s": 0.0,
+  "gate_s": 0.0,
+  "reconcile_s": 0.0,
+  "watchdog_s": 0.0,
+  "active_run_s": 8.447,
+  "lock_wait_s": 0.0,
+  "total_s": 129.0,
+  "per_run": [
+    {
+      "run_id": "os-portrange-1_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+      "inject_s": 0.11,
+      "detect_s": 0.0,
+      "diagnosis_s": 7.395,
+      "remediation_s": 0.0,
+      "gate_s": 0.0,
+      "reconcile_s": 0.0,
+      "watchdog_s": 0.0,
+      "active_run_s": 8.447,
+      "total_s": 129.0
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "scenario": "os-drift-sysctl-stepped",
+  "seed": 1,
+  "primary_run_id": "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3",
+  "detection_used": "synthetic",
+  "inject_s": 0.145,
+  "n_runs": 3,
+  "run_ids": [
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904",
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-2",
+    "os-drift-sysctl-stepped_1_deepseek-v4-1-flash-1017-cloud_a4b6904-try-3"
+  ],
+  "gaps_s": [
+    468.0,
+    303.0
+  ],
+  "injected_at": "2026-11-27T23:29:11Z",
+  "traffic": {
+    "profile": [
+      50,
+      200,
+      50
+    ],
+    "duration_s": 1067.329,
+    "total_requests": 104932,
+    "ok_2xx": 0,
+    "errors": 104932,
+    "error_rate": 1.0,
+    "p50_ms": 2008.86,
+    "p95_ms": 2017.74,
+    "p99_ms": 2060.48
+  },
+  "probe_results": {
+    "a": {
+      "remediated": false,
+      "passed_at": null,
+      "passed_ts": null,
+      "time_to_restore_s": null
+    }
+  }
+}

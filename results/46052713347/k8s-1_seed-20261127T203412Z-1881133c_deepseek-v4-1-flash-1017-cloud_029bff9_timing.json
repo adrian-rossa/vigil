@@ -1,0 +1,29 @@
+{
+  "scenario": "k8s-pair-samefile-1",
+  "seed": 1,
+  "primary_run_id": "k8s-1_seed-20261127T203412Z-1881133c_deepseek-v4-1-flash-1017-cloud_029bff9",
+  "inject_s": 68.904,
+  "detect_s": 14.584,
+  "diagnosis_s": 6.308,
+  "remediation_s": 9.485,
+  "gate_s": null,
+  "reconcile_s": null,
+  "watchdog_s": 139.387,
+  "active_run_s": 157.602,
+  "lock_wait_s": 0.0,
+  "total_s": 168.0,
+  "per_run": [
+    {
+      "run_id": "k8s-1_seed-20261127T203412Z-1881133c_deepseek-v4-1-flash-1017-cloud_029bff9",
+      "inject_s": 68.904,
+      "detect_s": 14.584,
+      "diagnosis_s": 6.308,
+      "remediation_s": 9.485,
+      "gate_s": null,
+      "reconcile_s": null,
+      "watchdog_s": 139.387,
+      "active_run_s": 157.602,
+      "total_s": 168.0
+    }
+  ]
+}
