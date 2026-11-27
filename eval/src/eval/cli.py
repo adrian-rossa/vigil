@@ -100,6 +100,7 @@ def run_cmd(
     verbose: bool,
     workload: str | None,
     noise_override: bool | None,
+    no_vigil: bool,
 ) -> None:
     """Execute one eval run: reset -> inject -> POST -> poll -> print metrics."""
     logging.basicConfig(
@@ -122,6 +123,7 @@ def run_cmd(
                 verbose=verbose,
                 workload_override=workload,
                 noise_override=noise_override,
+                no_vigil=no_vigil,
             )
         )
     except TimeoutError as e:

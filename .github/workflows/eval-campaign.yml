@@ -598,7 +598,9 @@ jobs:
       - name: Merge runs indexes
         run: |
           for f in eval/runs/runs_index_*.jsonl; do
-            [ -f "$f" ] && cat "$f" >> eval/runs_index.jsonl
+            if [ -f "$f" ]; then
+              cat "$f" >> eval/runs_index.jsonl
+            fi
           done
 
       - name: Install dependencies
