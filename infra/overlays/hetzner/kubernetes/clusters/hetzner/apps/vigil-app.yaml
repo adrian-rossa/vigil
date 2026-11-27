@@ -32,23 +32,24 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
             failureThreshold: 3
+            timeoutSeconds: 5
           resources:
             requests:
               memory: "64Mi"
             limits:
-              memory: "128Mi"
+              memory: "256Mi"
           volumeMounts:
             - name: nginx-config-template
               mountPath: /etc/nginx/templates
               readOnly: true
         - name: mem-load
           image: ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6
-          command: ["stress-ng", "--vm", "1", "--vm-bytes", "50M", "--vm-keep", "--timeout", "0"]
+          command: ["stress-ng", "--vm", "1", "--vm-bytes", "8M", "--vm-keep", "--timeout", "0"]
           resources:
             requests:
-              memory: "8Mi"
+              memory: "16Mi"
             limits:
-              memory: "96Mi"
+              memory: "32Mi"
       volumes:
         - name: nginx-config-template
           configMap:
