@@ -534,7 +534,7 @@ def _summarize_timings(
 
     out: dict[str, dict[str, Any]] = {}
     for bucket, rows in buckets.items():
-        stats: dict[str, Any] = {"n_attempts": len(row)}
+        stats: dict[str, Any] = {"n_attempts": len(rows)}
         for key in _TIMER_KEYS:
             vals = [
                 float(row[key])
@@ -937,7 +937,7 @@ def write_report(summary: dict[str, Any], output_dir: Path) -> None:
                 f"| {key} | {slot.get('n', 0)} | "
                 f"{_fmt(slot.get('p50'))} | {_fmt(slot.get('p95'))} |"
             )
-            lines.append("")
+        lines.append("")
 
     judge_summary = summary.get("judge") or {}
     if judge_summary:
