@@ -48,7 +48,7 @@ spec:
         - --vm
         - '1'
         - --vm-bytes
-        - 24M
+        - 16M
         - --vm-keep
         - --timeout
         - '0'
@@ -56,7 +56,7 @@ spec:
           requests:
             memory: 8Mi
           limits:
-            memory: 32Mi
+            memory: 64Mi
       volumes:
       - name: nginx-config-template
         configMap:
