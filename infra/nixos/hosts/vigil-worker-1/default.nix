@@ -15,7 +15,7 @@
 
   system.stateVersion = "25.05";
 
-  networking.firewall.allowedTCPPorts = [ 22 10250 ];
+  networking.firewall.allowedTCPPorts = [ 22 10250 9100 ];
   networking.firewall.allowedUDPPorts = [ 8472 ];
 
   services.openssh = {
