@@ -86,7 +86,7 @@ on:
         description: "Optional pinned LLM model for RCA judge (empty = skip)"
         type: string
         required: false
-        default: ""
+        default: "kimi-k3.1-pro:cloud"
 
 permissions:
   contents: read
