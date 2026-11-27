@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from eval import judge
 
 
@@ -183,3 +185,128 @@ def test_judge_attempt_multi_fault_filters_noise_and_checks_relationship(
 
     saved = judge.write_judge(tmp_path / "r1.json", out)
     assert saved.name == "r1_judge.json"
+
+
+def test_cli_judge_runs_and_skips_existing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from click.testing import CliRunner
+    from eval.cli import cli
+
+    scenarios_dir = tmp_path / "scenarios"
+    scen_dir = scenarios_dir / "k8s-3g"
+    scen_dir.mkdir(parents=True)
+    (scen_dir / "scenario.yaml").write_text(
+        "id: k8s-3g\n"
+        "name: oom\n"
+        "faults:\n"
+        "  - id: a\n"
+        "    component: deployment/vigil-app\n"
+        "    expected_action: git_commit_k8s\n",
+        encoding="utf-8",
+    )
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _write_trace(
+        runs_dir / "r1_trace.jsonl",
+        {"pod": "vigil-app-1"},
+        {"root_cause": "OOM on mem-load", "root_cause_component": "vigil-app"},
+    )
+    (runs_dir / "r1_attempt.json").write_text(
+        json.dumps(
+            {
+                "scenario": "k8s-3g",
+                "seed": 1,
+                "primary_run_id": "r1",
+                "run_ids": ["r1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    all_yes = _checklist_json(
+        {
+            "D1-Q1", "D1-Q2", "D1-Q3",
+            "D2-Q1", "D2-Q2", "D2-Q3",
+            "D3-Q1", "D3-Q2", "D3-Q3",
+        }
+    )
+    monkeypatch.setattr(judge.DiagnosisJudge, "_invoke", lambda _s, _sp, _up: all_yes)
+
+    runner = CliRunner()
+    args = [
+        "judge",
+        "--runs-dir", str(runs_dir),
+        "--scenarios-dir", str(scenarios_dir),
+        "--model", "pinned-judge-v1",
+    ]
+    res1 = runner.invoke(cli, args)
+    assert res1.exit_code == 0, res1.output
+    assert "Judged 1 attempt(s) (skipped 0)" in res1.output
+    assert (runs_dir / "r1_judge.json").is_file()
+
+    # Second call without --overwrite skips the existing file.
+    res2 = runner.invoke(cli, args)
+    assert res2.exit_code == 0, res2.output
+    assert "Judged 0 attempt(s) (skipped 1)" in res2.output
+
+
+def test_cli_kappa_computes_agreement_and_skips_unscored(tmp_path: Path) -> None:
+    from click.testing import CliRunner
+    from eval.cli import cli
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    (runs_dir / "r1_judge.json").write_text(
+        json.dumps(
+            {
+                "judge_model": "pinned-judge-v1",
+                "checklist_version": "3.0",
+                "faults": [
+                    {"id": "a", "verdict": "True"},
+                    {"id": "b", "verdict": "False"},
+                    {"id": "c", "verdict": None, 
+                    "unscored_reason": "judge_parse_failure"
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    labels_file = tmp_path / "labels.jsonl"
+    labels_file.write_text(
+        "\n".join(
+            [
+                json.dumps({
+                    "primary_run_id": "r1", 
+                    "fault_id": "a", 
+                    "human_verdict": True
+                }),
+                json.dumps({
+                    "primary_run_id": "r1", 
+                    "fault_id": "b", 
+                    "human_verdict": False
+                }),
+                json.dumps({
+                    "primary_run_id": "r1", 
+                    "fault_id": "c", 
+                    "human_verdict": True
+                }),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    res = CliRunner().invoke(
+        cli,
+        ["kappa", "--labels-file", str(labels_file), "--runs-dir", str(runs_dir)],
+    )
+    assert res.exit_code == 0, res.output
+    out = json.loads(res.output)
+    assert out["n_paired"] == 2
+    assert out["n_unscored_skipped"] == 1
+    assert out["agreement_rate"] == 1.0
+    assert out["cohens_kappa"] == 1.0
+    assert out["judge_models"] == ["pinned-judge-v1"]

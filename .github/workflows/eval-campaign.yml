@@ -68,6 +68,15 @@ on:
         type: string
         required: false
         default: ""
+      suite:
+        description: "Scenario suite when scenarios input is empty"
+        type: choice
+        required: false
+        default: thesis
+        options:
+          - thesis
+          - controls
+          - legacy
 
 permissions:
   contents: read
@@ -89,6 +98,7 @@ jobs:
           SKIP_K8S: ${{ inputs.skip_k8s }}
           SKIP_OS: ${{ inputs.skip_os }}
           SCENARIOS: ${{ inputs.scenarios }}
+          SUITE: ${{ inputs.suite}}
           SEED_COUNT: ${{ inputs.seed_count }}
           PARALLEL: ${{ inputs.parallel }}
           TARGET: ${{ inputs.target }}
@@ -96,6 +106,15 @@ jobs:
           base='[]'
           if [ -n "$SCENARIOS" ]; then
             base=$(jq -cn --arg s "$SCENARIOS" '[{"group":"cross","scenarios":$s}]')
+          elif [ "$SUITE" = 'controls' ]; then
+            base=$(jq -cn '[{"group":"misc","scenarios":"k8s-1g k8s-2g k8s-5g k8s-rollback-1 deceptive-2 live-quota-injected os-1 os-1g os-stale-generation disk-pressure"}]')
+          elif [ "$SUITE" = 'thesis' ]; then
+            if [ "$SKIP_K8S" != 'true' ]; then
+              base=$(echo "$base" | jq -c '. + [{"group":"k8s","scenarios":"k8s-3g k8s-4g k8s-pair-1 k8s-pair-samefile-1 k8s-cascade-1 k8s-3g-noise k8s-pair-1-noise k8s-3g-stepped k8s-pair-1-stepped"}]')
+            fi
+            if [ "$SKIP_OS" != 'true' ]; then
+              base=$(echo "$base" | jq -c '. + [{"group":"os","scenarios":"os-drift-sysctl cross-pair-1 os-portrange-1 cross-pair-1-noise os-drift-sysctl-stepped"}]')
+            fi
           else
             if [ "$SKIP_K8S" != 'true' ]; then
               base=$(echo "$base" | jq -c '. + [{"group":"k8s","scenarios":"k8s-1g k8s-2g k8s-3g k8s-4g k8s-5g live-quota-injected deceptive-2 k8s-rollback-1"}]')
@@ -570,6 +589,9 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked --all-packages
+      
+      - name: Rebuild run_map and offline scores
+        run: uv run vigil-eval score --runs-dir eval/runs
 
       - name: Aggregate
         env:

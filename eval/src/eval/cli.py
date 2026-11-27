@@ -601,6 +601,154 @@ def score_cmd(
     click.echo(f"Scored {scored} attempt(s) in {resolved_runs}")
 
 
+@cli.command("judge")
+@click.option(
+    "--runs-dir",
+    default=None,
+    envvar="EVAL_RUNS_DIR",
+    show_envvar=True,
+    type=click.Path(file_okay=False, path_type=Path),
+)
+@click.option(
+    "--scenarios-dir",
+    default="eval/scenarios",
+    envvar="VIGIL_SCENARIOS_DIR",
+    show_envvar=True,
+    type=click.Path(file_okay=False, path_type=Path),
+)
+@click.option(
+    "--model",
+    default="",
+    envvar="JUDGE_MODEL_NAME",
+    show_envvar=True,
+    help="Pinned LLM model for the checklist judge (required).",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Re-judge attempts that already have a *_judge.json file.",
+)
+def judge_cmd(
+    runs_dir: Path | None,
+    scenarios_dir: Path,
+    model: str,
+    overwrite: bool,
+) -> None:
+    """Run the pinned LLM-as-a-Judge offline over every *_attempt.json."""
+    import yaml
+
+    from eval import judge as judge_lib
+
+    if not model.strip():
+        raise click.ClickException(
+            "A pinned judge model is required (--model or JUDGE_MODEL_NAME)."
+        )
+    resolved_runs = Path(runs_dir) if runs_dir else Path("eval/runs")
+    dj = judge_lib.DiagnosisJudge(model_name=model.strip())
+    judged = 0
+    skipped = 0
+    for attempt_path in sorted(resolved_runs.glob("*_attempt.json")):
+        attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        scenario_id = str(attempt.get("scenario") or "")
+        primary_id = str(attempt.get("primary_run_id") or "")
+        if not scenario_id or not primary_id:
+            continue
+        primary_path = resolved_runs / f"{primary_id}.json"
+        out_path = primary_path.with_name(f"{primary_id}_judge.json")
+        if out_path.is_file() and not overwrite:
+            skipped += 1
+            continue
+        scen_yaml = scenarios_dir / scenario_id / "scenario.yaml"
+        scenario = (
+            yaml.safe_load(scen_yaml.read_text(encoding="utf-8")) or {}
+            if scen_yaml.is_file()
+            else {}
+        )
+        result = judge_lib.judge_attempt(attempt, scenario, resolved_runs, dj)
+        judge_lib.write_judge(primary_path, result)
+        judged += 1
+    click.echo(f"Judged {judged} attempt(s) (skipped {skipped}) in {resolved_runs}")
+
+
+@cli.command("kappa")
+@click.option(
+    "--labels-file",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="JSON array or JSONL of {primary_run_id, fault_id, human_verdict}.",
+)
+@click.option(
+    "--runs-dir",
+    default=None,
+    envvar="EVAL_RUNS_DIR",
+    show_envvar=True,
+    type=click.Path(file_okay=False, path_type=Path),
+)
+def kappa_cmd(labels_file: Path, runs_dir: Path | None) -> None:
+    """Compute Cohen's kappa between Phase 3b human labels and *_judge.json."""
+    from eval.aggregate import cohens_kappa
+
+    resolved_runs = Path(runs_dir) if runs_dir else Path("eval/runs")
+    raw_text = labels_file.read_text(encoding="utf-8").strip()
+    if raw_text.startswith("["):
+        rows = json.loads(raw_text)
+    else:
+        rows = [json.loads(line) for line in raw_text.splitlines() if line.strip()]
+
+    human_labels: list[bool] = []
+    judge_labels: list[bool] = []
+    models: set[str] = set()
+    versions: set[str] = set()
+    unscored_skipped = 0
+    missing = 0
+
+    for row in rows:
+        pid = str(row["primary_run_id"])
+        fid = str(row.get("fault_id") or "a")
+        human_val = bool(row["human_verdict"])
+        jpath = resolved_runs / f"{pid}_judge.json"
+        if not jpath.is_file():
+            missing += 1
+            continue
+        jdata = json.loads(jpath.read_text(encoding="utf-8"))
+        if jdata.get("judge_model"):
+            models.add(str(jdata["judge_model"]))
+        if jdata.get("checklist_version"):
+            versions.add(str(jdata["checklist_version"]))
+        match = next(
+            (f for f in (jdata.get("faults") or []) if str(f.get("id")) == fid),
+            None,
+        )
+        if match is None:
+            missing += 1
+            continue
+        if match.get("verdict") is None:
+            unscored_skipped += 1
+            continue
+        human_labels.append(human_val)
+        judge_labels.append(match["verdict"] == "True")
+
+    n = len(human_labels)
+    agree = (
+        round(sum(a == b for a, b in zip(human_labels, judge_labels)) / n, 4)
+        if n
+        else None
+    )
+    click.echo(
+        json.dumps(
+            {
+                "n_paired": n,
+                "n_unscored_skipped": unscored_skipped,
+                "n_missing": missing,
+                "agreement_rate": agree,
+                "cohens_kappa": cohens_kappa(human_labels, judge_labels),
+                "judge_models": sorted(models),
+                "checklist_versions": sorted(versions),
+            },
+            indent=2,
+        )
+    )
 
 if __name__ == "__main__":
     cli()
