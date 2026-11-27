@@ -32,11 +32,12 @@ spec:
             initialDelaySeconds: 2
             periodSeconds: 5
             failureThreshold: 3
+            timeoutSeconds: 3
           resources:
             requests:
-              memory: "64Mi"
-            limits:
               memory: "128Mi"
+            limits:
+              memory: "256Mi"
           volumeMounts:
             - name: nginx-config-template
               mountPath: /etc/nginx/templates
