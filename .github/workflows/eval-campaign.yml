@@ -77,6 +77,11 @@ on:
           - thesis
           - controls
           - legacy
+      no_vigil:
+        description: "Block alerts and run without vigil active to verify no scenario self-heals"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -421,8 +426,12 @@ jobs:
       - name: Initialize eval baseline
         env:
           AGENT_IP: ${{ steps.agent.outputs.ip }}
+          NO_VIGIL: ${{ inputs.no_vigil }}
         run: |
           eval/scripts/agent-exec.sh "SERIES_REF='$SERIES_REF' bash eval/scripts/reset-eval-baseline.sh"
+          if [ "$NO_VIGIL" = 'true' ]; then
+            eval/scripts/agent-exec.sh "sed -i 's/^VIGIL_BLOCK_ALERT_TRIGGERS=.*/VIGIL_BLOCK_ALERT_TRIGGERS=true/' /etc/vigil/env && (grep -q '^VIGIL_BLOCK_ALERT_TRIGGERS=' /etc/vigil/env || echo 'VIGIL_BLOCK_ALERT_TRIGGERS=true' >> /etc/vigil/env)"
+          fi
           eval/scripts/agent-exec.sh "\${VIGIL_ORCHESTRATOR_RESTART_CMD:-systemctl restart vigil-orchestrator.service}"
           DEADLINE=$(($(date +%s) + 120))
           until eval/scripts/agent-exec.sh "curl -sf \"\${VIGIL_ORCHESTRATOR_URL:-http://localhost:9099}/healthz\" > /dev/null"; do
@@ -437,7 +446,12 @@ jobs:
           MODEL: ${{ inputs.model }}
           AGENT_IP: ${{ steps.agent.outputs.ip }}
           AGENT_PRIVATE_IP: ${{ steps.agent.outputs.private_ip }}
+          NO_VIGIL: ${{ inputs.no_vigil }}
         run: |
+          NO_VIGIL_FLAG=""
+          if [ "$NO_VIGIL" = 'true' ]; then
+            NO_VIGIL_FLAG="--no-vigil"
+          fi
           PREV=""
           for S in $SCENARIOS; do
             if [ -n "$PREV" ]; then
@@ -453,8 +467,8 @@ jobs:
             fi
             echo "::group::scenario $S"
             VIGIL_EVAL_STATUS=0
-            printf -v REMOTE 'SERIES_REF=%q vigil-eval run --scenario %q --seed %q --model %q' \
-              "$SERIES_REF" "$S" "$SEED" "$MODEL"
+            printf -v REMOTE 'SERIES_REF=%q vigil-eval run --scenario %q --seed %q --model %q %s' \
+              "$SERIES_REF" "$S" "$SEED" "$MODEL" "$NO_VIGIL_FLAG"
             eval/scripts/agent-exec.sh "$REMOTE" \
               || VIGIL_EVAL_STATUS=$?
             echo "::endgroup::"

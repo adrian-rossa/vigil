@@ -1120,6 +1120,27 @@ def _build_noise_runner(
     )
 
 
+def _emit_no_vigil_record(
+    scenario_id: str, seed: int, model: str, runs_dir: Path
+) -> Path:
+    """Write a marker JSON for no-vigil runs (no started_at -> n_runs = 0)"""
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    run_id = f"no-vigil_{scenario_id}_{seed}"
+    path = runs_dir / f"{run_id}.json"
+    record = {
+        "run_id": run_id,
+        "scenario": scenario_id,
+        "seed": str(seed),
+        "model": model,
+        "outcome": "no_vigil",
+        "success_rate": None,
+        "MTTR_s": None,
+        "iteration_count": 0,
+    }
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 async def run_one(
     scenario_id: str,
     seed: int,
@@ -1131,6 +1152,7 @@ async def run_one(
     verbose: bool = False,
     workload_override: str | None = None,
     noise_override: bool | None = None,
+    no_vigil: bool = False,
 ) -> Path:
     if runs_dir is None:
         runs_dir = Path(os.environ.get("EVAL_RUNS_DIR", "eval/runs"))
@@ -1213,6 +1235,7 @@ async def run_one(
     window_start = time.time() - 5
     path: Path | None = None
     detection_used = "synthetic"
+    probe_results: dict[str, dict[str, Any]] | None = None
     injected_at: str | None = None
     
     try:
@@ -1276,30 +1299,46 @@ async def run_one(
             log.info("starting background noise runner for %s", scenario_id)
             await noise_runner.start()
             noise_started = True
-
-        if detection == "alert":
-            path = await _wait_for_alert_run(
-                runs_dir,
-                window_start,
-                timeout_s or DEFAULT_TIMEOUT_S,
-                verbose = verbose,
+        if no_vigil:
+            detection_used = "none"
+            path = _emit_no_vigil_record(scenario_id, seed, model, runs_dir)
+            probe_results = (
+                await asyncio.to_thread(
+                  score_lib.poll_health_probes,
+                  faults,
+                  injected_at=injected_at,
+                  kubeconfig=kubeconfig,
+                )
+                if faults
+                else {}
             )
-            if path is not None:
-                detection_used = "alert"
-        if path is None:
-            path = await trigger_and_wait(
-                scenario_id=scenario_id,
-                seed=seed,
-                orchestrator_url=orchestrator_url,
-                runs_dir = runs_dir,
-                model = model,
-                timeout_s = timeout_s,
-                verbose = verbose,
-                target_host = target_host,
-                faults = faults or None,
-                window_start=window_start,
+        else:
+            if detection == "alert":
+                path = await _wait_for_alert_run(
+                    runs_dir,
+                    window_start,
+                    timeout_s or DEFAULT_TIMEOUT_S,
+                    verbose = verbose,
+                )
+                if path is not None:
+                    detection_used = "alert"
+            if path is None:
+                path = await trigger_and_wait(
+                    scenario_id=scenario_id,
+                    seed=seed,
+                    orchestrator_url=orchestrator_url,
+                    runs_dir = runs_dir,
+                    model = model,
+                    timeout_s = timeout_s,
+                    verbose = verbose,
+                    target_host = target_host,
+                    faults = faults or None,
+                    window_start=window_start,
+                )
+            await _wait_for_drain(
+                runs_dir, window_start, 
+                timeout_s or DEFAULT_TIMEOUT_S
             )
-        await _wait_for_drain(runs_dir, window_start, timeout_s or DEFAULT_TIMEOUT_S)
     finally:
         noise_summary: dict[str, Any] | None = None
         traffic_summary: dict[str, Any] | None = None
@@ -1317,13 +1356,14 @@ async def run_one(
             )
             if attempt_target is not None:
                 faults_list = list(data.get("faults") or [])
-                probe_results = (
-                    await asyncio.to_thread(
-                        score_lib.poll_health_probes,
-                        faults_list,
-                        injected_at=injected_at,
-                        kubeconfig=kubeconfig,
-                    )
+                if probe_results is None and faults_list:
+                    probe_results = (
+                        await asyncio.to_thread(
+                            score_lib.poll_health_probes,
+                            faults_list,
+                            injected_at=injected_at,
+                            kubeconfig=kubeconfig,
+                        )
                     if faults_list
                     else None
                 )

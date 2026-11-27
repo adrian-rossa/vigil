@@ -1651,3 +1651,63 @@ async def test_run_one_starts_and_stops_traffic_and_noise_in_order(
     attempt = json.loads((runs_dir / "run-factor_attempt.json").read_text())
     assert attempt["traffic"]["total_requests"] == 42
     assert attempt["noise"]["total_events"] == 2
+
+
+async def test_run_one_no_vigil_skips_orchestrator_and_polls_probes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scenarios_dir = tmp_path / "scenarios"
+    scen_dir = scenarios_dir / "nv-test"
+    scen_dir.mkdir(parents=True)
+    (scen_dir / "scenario.yaml").write_text(
+        "id: nv-test\n"
+        "detection: alert\n"
+        "faults:\n"
+        "  - id: a\n"
+        "    component: deployment/vigil-app\n"
+        "    inject_params:\n"
+        "      fault_type: service_target_port\n"
+        "    health_probe:\n"
+        "      kind: http_ok\n"
+        "      url: http://vigil-app.default.svc/\n"
+        "      window_s: 5\n",
+        encoding="utf-8",
+    )
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+
+    async def fake_baseline() -> tuple[dict, bool]:
+        return {}, True
+
+    async def boom(**_kwargs: object) -> Path:
+        raise AssertionError("orchestrator must not be triggered in no_vigil mode")
+
+    monkeypatch.setattr(harness_mod, "capture_flux_baseline", fake_baseline)
+    monkeypatch.setattr(harness_mod, "_repo_head", lambda: None)
+    monkeypatch.setattr(harness_mod.fault_lib, "reset_faults", lambda _d: [])
+    monkeypatch.setattr(harness_mod.fault_lib, "inject_faults", lambda *_a, **_kw: [])
+    monkeypatch.setattr(harness_mod, "trigger_and_wait", boom)
+    monkeypatch.setattr(harness_mod, "_wait_for_alert_run", boom)
+    monkeypatch.setattr(
+        harness_mod.score_lib,
+        "poll_health_probes",
+        lambda *_a, **_kw: {
+            "a": {
+                "remediated": False,
+                "passed_at": None,
+                "passed_ts": None,
+                "time_to_restore_s": None,
+            }
+        },
+    )
+
+    out_path = await run_one(
+        "nv-test", 1, scenarios_dir, "test-model", runs_dir=runs_dir, no_vigil=True
+    )
+    assert out_path.name == "no-vigil_nv-test_1.json"
+    attempt = json.loads((runs_dir / "no-vigil_nv-test_1_attempt.json").read_text())
+    score = json.loads((runs_dir / "no-vigil_nv-test_1_score.json").read_text())
+    assert attempt["n_runs"] == 0
+    assert attempt["detection_used"] == "none"
+    assert score["all_remediated"] is False
+    assert score["n_remediated"] == 0

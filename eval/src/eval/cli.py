@@ -83,6 +83,12 @@ def cli() -> None:
     default=None,
     help="Override scenario.yaml bg noise factor"
 )
+@click.option(
+    "--no-vigil",
+    is_flag=True,
+    default=False,
+    help="Inject fault and poll health_probes without triggering vigil.",
+)
 def run_cmd(
     scenario: str,
     seed: int,
