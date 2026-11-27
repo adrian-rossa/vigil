@@ -82,6 +82,11 @@ on:
         type: boolean
         required: false
         default: false
+      judge_model:
+        description: "Optional pinned LLM model for RCA judge (empty = skip)"
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -608,6 +613,16 @@ jobs:
       
       - name: Rebuild run_map and offline scores
         run: uv run vigil-eval score --runs-dir eval/runs
+
+      - name: Run LLM-as-a-Judge
+        if: ${{ inputs.judge_model != '' && !inputs.no_vigil }}
+        continue-on-error: true
+        env:
+          JUDGE_MODEL_NAME: ${{ inputs.judge_model }}
+          ANTHROPIC_API_KEY: ${{ secrets.TF_VAR_ANTHROPIC_API_KEY }}
+          OLLAMA_API_KEY: ${{ secrets.TF_VAR_OLLAMA_API_KEY }}
+          OLLAMA_BASE_URL: ${{ secrets.TF_VAR_OLLAMA_BASE_URL }}
+        run: uv run vigil-eval judge --runs-dir eval/runs
 
       - name: Aggregate
         env:
