@@ -68,6 +68,3 @@ additionalPrometheusRulesMap:
         annotations:
           summary: Container {{ $labels.container }} in {{ $labels.namespace }}/{{
             $labels.pod }} was OOMKilled
-grafana:
-  nodeSelector:
-    kubernetes.io/hostname: nonexistent-bogus-node
