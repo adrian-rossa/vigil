@@ -28,7 +28,7 @@ def _default_probe_fn(probe: Mapping[str, Any], kubeconfig: str | None) -> bool:
 def poll_health_probes(
     faults: Sequence[Mapping[str, Any]],
     *,
-    injected_at: str | None = None,
+    injected_at: str | float | None = None,
     kubeconfig: str | None = None,
     probe_fn: ProbeFn | None = None,
     interval_s: float = 5.0,
@@ -40,7 +40,11 @@ def poll_health_probes(
     """Poll each faults health_probe until N consecutive passes or timeout"""
     health_check = probe_fn or _default_probe_fn
     start_ts = now_fn()
-    injected_at = timings.parse_iso(injected_at)
+    injected_at = (
+        timings.parse_iso(injected_at)
+        if isinstance(injected_at, str)
+        else injected_at
+    )
 
     probes: dict[str, Mapping[str, Any]] = {}
     timeouts: dict[str, float] = {}
@@ -108,7 +112,7 @@ def _git_touched_paths(sha: str, repo_root: Path) -> list[str]:
     )
     if res.returncode != 0:
         return []
-    return [line.strip() for line in res.stdout.splitlines() if line.stip()]
+    return [line.strip() for line in res.stdout.splitlines() if line.strip()]
 
 
 def touched_paths_by_incident(

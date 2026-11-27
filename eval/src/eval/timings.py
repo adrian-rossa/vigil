@@ -139,7 +139,7 @@ def compute_run_timing(
     trace_entries: Sequence[dict[str, Any]],
     *,
     inject_s: float | None = None,
-    injected_at: str | None = None,
+    injected_at: str | float | None = None,
     probe_green_ts: float | None = None,
     reconcile_s: float | None = None,
     repo_root: Path | None = None,
@@ -147,7 +147,11 @@ def compute_run_timing(
     """Compute phase timers for a single RunRecord and its trace"""
     started_ts = parse_iso(record.get("started_at"))
     ended_ts = parse_iso(record.get("ended_at"))
-    injected_at = parse_iso(injected_at)
+    injected_at = (
+        parse_iso(injected_at)
+        if isinstance(injected_at, str)
+        else injected_at
+    )
 
     fault_event = extract_fault_event(trace_entries)
     alert_starts_ts: float | None = None
@@ -172,7 +176,11 @@ def compute_run_timing(
     # Remediation Phase
     rem_start, rem_end = phase_bounds(trace_entries, "remediation")
     has_remediation = rem_start is not None and rem_end is not None
-    remediation_s = (rem_end - rem_start) if has_remediation else 0.0
+    remediation_s = (
+        (rem_end - rem_start)
+        if rem_start is not None and rem_end is not None
+        else 0.0
+    )
 
     # Post Remediation (Gate, Flux, Watchdog)
     merge_sha = record.get("merge_commit_sha")
