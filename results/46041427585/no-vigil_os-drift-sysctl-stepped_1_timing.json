@@ -1,0 +1,16 @@
+{
+  "scenario": "os-drift-sysctl-stepped",
+  "seed": 1,
+  "primary_run_id": "no-vigil_os-drift-sysctl-stepped_1",
+  "inject_s": 0.177,
+  "detect_s": null,
+  "diagnosis_s": null,
+  "remediation_s": null,
+  "gate_s": null,
+  "reconcile_s": null,
+  "watchdog_s": null,
+  "active_run_s": null,
+  "lock_wait_s": 0.0,
+  "total_s": null,
+  "per_run": []
+}

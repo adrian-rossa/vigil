@@ -1,0 +1,738 @@
+{
+  "by_model": {
+    "deepseek-v4.1-flash:1017-cloud": {
+      "n_runs": 1,
+      "n_attempts": 1,
+      "success_rate": 0.0,
+      "success_rate_given_attempt": 0.0,
+      "mean_MTTR_s": null,
+      "std_MTTR_s": null,
+      "diagnosis_accuracy": null,
+      "diag_n": 0,
+      "destructive_repair_rate": 0.0,
+      "rollback_triggered_rate": 0.0,
+      "rollback_success_rate": null,
+      "n_eligible": 1,
+      "mean_input_tokens": 0,
+      "mean_output_tokens": 0,
+      "mean_tool_calls": 0,
+      "mean_iteration_count": 0
+    }
+  },
+  "by_scenario": {
+    "k8s-pair-1-noise": {
+      "n_runs": 1,
+      "outcome": "inject_did_not_break",
+      "setup_error": "scenario k8s-pair-1-noise: flux did not take up be493fce5607c65b83c5013f141ff18254f641c5 within 300s",
+      "forbidden_action_violations": [],
+      "per_seed": [
+        {
+          "seed": "1",
+          "outcome": "inject_did_not_break",
+          "success_rate": false
+        }
+      ],
+      "passed": 0,
+      "n_seeds": 1,
+      "diag_correct": 0,
+      "diag_total": 0,
+      "success_rate": 0.0,
+      "mean_MTTR_s": null,
+      "std_MTTR_s": null,
+      "mean_iteration_count": null,
+      "mean_tool_calls": null
+    }
+  },
+  "escalation": {
+    "k8s-pair-1-noise": {
+      "layer": "k8s",
+      "accuracy": null
+    }
+  },
+  "run_buckets": {
+    "passed": 0,
+    "agent-failed": 0,
+    "infra-error": 1,
+    "gate-uncertain": 0,
+    "awaiting-review": 0,
+    "not-run": 23
+  },
+  "n_runs": 1,
+  "n_planned_runs": 24,
+  "scenarios_passing_all_seeds": 0,
+  "totals": {
+    "n": 1,
+    "n_models": 1,
+    "n_scenarios": 1
+  },
+  "planned_scenarios": [
+    "cross-pair-1",
+    "cross-pair-1-noise",
+    "deceptive-2",
+    "disk-pressure",
+    "k8s-1g",
+    "k8s-2g",
+    "k8s-3g",
+    "k8s-3g-noise",
+    "k8s-3g-stepped",
+    "k8s-4g",
+    "k8s-5g",
+    "k8s-cascade-1",
+    "k8s-pair-1",
+    "k8s-pair-1-noise",
+    "k8s-pair-1-stepped",
+    "k8s-pair-samefile-1",
+    "k8s-rollback-1",
+    "live-quota-injected",
+    "os-1",
+    "os-1g",
+    "os-drift-sysctl",
+    "os-drift-sysctl-stepped",
+    "os-portrange-1",
+    "os-stale-generation"
+  ],
+  "target": "hetzner",
+  "multi_fault": {
+    "cross-pair-1": {
+      "n_attempts": 1,
+      "n_faults": 2,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.5,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "k8s-3g": {
+      "n_attempts": 1,
+      "n_faults": 1,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.0,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "k8s-4g": {
+      "n_attempts": 1,
+      "n_faults": 1,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.0,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "k8s-cascade-1": {
+      "n_attempts": 1,
+      "n_faults": 1,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.0,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "k8s-pair-1": {
+      "n_attempts": 1,
+      "n_faults": 2,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.5,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "k8s-pair-samefile-1": {
+      "n_attempts": 1,
+      "n_faults": 2,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.5,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "os-drift-sysctl": {
+      "n_attempts": 1,
+      "n_faults": 1,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.0,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "os-drift-sysctl-stepped": {
+      "n_attempts": 1,
+      "n_faults": 1,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.0,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    },
+    "os-portrange-1": {
+      "n_attempts": 1,
+      "n_faults": 1,
+      "fault_detected_rate": 0.0,
+      "fault_attributed_rate": 0.0,
+      "fault_remediated_rate": 0.0,
+      "all_remediated_rate": 0.0,
+      "collision_rate": 0.0,
+      "mean_noise_runs": 0,
+      "headline_mttr_p50_s": null,
+      "headline_mttr_p95_s": null
+    }
+  },
+  "timings": {
+    "overall": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 9,
+        "p50": 69.06,
+        "p95": 190.97
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 9,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "cross-pair-1": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 159.0,
+        "p95": 159.0
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "k8s-3g": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 69.06,
+        "p95": 69.06
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "k8s-4g": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 7.44,
+        "p95": 7.44
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "k8s-cascade-1": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 69.09,
+        "p95": 69.09
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "k8s-pair-1": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 190.97,
+        "p95": 190.97
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "k8s-pair-samefile-1": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 69.08,
+        "p95": 69.08
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "os-drift-sysctl-stepped": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 0.18,
+        "p95": 0.18
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "os-drift-sysctl": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 0.13,
+        "p95": 0.13
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    },
+    "os-portrange-1": {
+      "n_attempts": 14,
+      "inject_s": {
+        "n": 1,
+        "p50": 0.16,
+        "p95": 0.16
+      },
+      "detect_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "diagnosis_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "remediation_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "gate_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "reconcile_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "watchdog_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "active_run_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      },
+      "lock_wait_s": {
+        "n": 1,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "total_s": {
+        "n": 0,
+        "p50": null,
+        "p95": null
+      }
+    }
+  },
+  "judge": {}
+}

@@ -1,0 +1,16 @@
+{
+  "scenario": "cross-pair-1",
+  "seed": 1,
+  "primary_run_id": "no-vigil_cross-pair-1_1",
+  "inject_s": 159.002,
+  "detect_s": null,
+  "diagnosis_s": null,
+  "remediation_s": null,
+  "gate_s": null,
+  "reconcile_s": null,
+  "watchdog_s": null,
+  "active_run_s": null,
+  "lock_wait_s": 0.0,
+  "total_s": null,
+  "per_run": []
+}

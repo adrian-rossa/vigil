@@ -1,0 +1,19 @@
+{
+  "scenario": "k8s-cascade-1",
+  "seed": 1,
+  "primary_run_id": "no-vigil_k8s-cascade-1_1",
+  "detection_used": "none",
+  "inject_s": 69.086,
+  "n_runs": 0,
+  "run_ids": [],
+  "gaps_s": [],
+  "injected_at": "2026-11-27T18:41:51Z",
+  "probe_results": {
+    "a": {
+      "remediated": false,
+      "passed_at": null,
+      "passed_ts": null,
+      "time_to_restore_s": null
+    }
+  }
+}

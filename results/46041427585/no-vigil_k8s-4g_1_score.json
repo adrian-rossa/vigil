@@ -1,0 +1,32 @@
+{
+  "scenario": "k8s-4g",
+  "seed": 1,
+  "primary_run_id": "no-vigil_k8s-4g_1",
+  "detection_used": "none",
+  "n_runs": 0,
+  "fault_run_ids": [],
+  "noise_run_ids": [],
+  "run_alerts": {},
+  "n_faults": 1,
+  "n_detected": 0,
+  "n_attributed": 0,
+  "n_remediated": 0,
+  "all_remediated": false,
+  "time_to_last_fix_s": null,
+  "collision": false,
+  "colliding_paths": [],
+  "touched_paths_by_incident": {},
+  "faults": [
+    {
+      "id": "a",
+      "component": "deployment/vigil-app",
+      "severity": "user_facing",
+      "detected": false,
+      "attributed": false,
+      "remediated": false,
+      "passed_at": null,
+      "time_to_restore_s": null,
+      "touched_paths": []
+    }
+  ]
+}

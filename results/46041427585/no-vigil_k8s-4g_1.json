@@ -1,0 +1,10 @@
+{
+  "run_id": "no-vigil_k8s-4g_1",
+  "scenario": "k8s-4g",
+  "seed": "1",
+  "model": "deepseek-v4.1-flash:1017-cloud",
+  "outcome": "no_vigil",
+  "success_rate": null,
+  "MTTR_s": null,
+  "iteration_count": 0
+}

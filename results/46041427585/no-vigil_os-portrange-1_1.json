@@ -1,0 +1,10 @@
+{
+  "run_id": "no-vigil_os-portrange-1_1",
+  "scenario": "os-portrange-1",
+  "seed": "1",
+  "model": "deepseek-v4.1-flash:1017-cloud",
+  "outcome": "no_vigil",
+  "success_rate": null,
+  "MTTR_s": null,
+  "iteration_count": 0
+}

@@ -1,0 +1,11 @@
+{
+  "no-vigil_cross-pair-1_1": "cross-pair-1",
+  "no-vigil_k8s-3g_1": "k8s-3g",
+  "no-vigil_k8s-4g_1": "k8s-4g",
+  "no-vigil_k8s-cascade-1_1": "k8s-cascade-1",
+  "no-vigil_k8s-pair-1_1": "k8s-pair-1",
+  "no-vigil_k8s-pair-samefile-1_1": "k8s-pair-samefile-1",
+  "no-vigil_os-drift-sysctl-stepped_1": "os-drift-sysctl-stepped",
+  "no-vigil_os-drift-sysctl_1": "os-drift-sysctl",
+  "no-vigil_os-portrange-1_1": "os-portrange-1"
+}

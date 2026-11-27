@@ -1,0 +1,19 @@
+{
+  "scenario": "os-drift-sysctl",
+  "seed": 1,
+  "primary_run_id": "no-vigil_os-drift-sysctl_1",
+  "detection_used": "none",
+  "inject_s": 0.131,
+  "n_runs": 0,
+  "run_ids": [],
+  "gaps_s": [],
+  "injected_at": "2026-11-27T17:54:32Z",
+  "probe_results": {
+    "a": {
+      "remediated": false,
+      "passed_at": null,
+      "passed_ts": null,
+      "time_to_restore_s": null
+    }
+  }
+}

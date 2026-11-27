@@ -1,0 +1,34 @@
+{
+  "scenario": "os-portrange-1",
+  "seed": 1,
+  "primary_run_id": "no-vigil_os-portrange-1_1",
+  "detection_used": "none",
+  "inject_s": 0.163,
+  "n_runs": 0,
+  "run_ids": [],
+  "gaps_s": [],
+  "injected_at": "2026-11-27T18:59:12Z",
+  "traffic": {
+    "profile": [
+      50,
+      200,
+      50
+    ],
+    "duration_s": 307.176,
+    "total_requests": 31403,
+    "ok_2xx": 0,
+    "errors": 31403,
+    "error_rate": 1.0,
+    "p50_ms": 2009.58,
+    "p95_ms": 2020.38,
+    "p99_ms": 2066.07
+  },
+  "probe_results": {
+    "a": {
+      "remediated": false,
+      "passed_at": null,
+      "passed_ts": null,
+      "time_to_restore_s": null
+    }
+  }
+}

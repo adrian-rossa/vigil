@@ -1,0 +1,16 @@
+{
+  "scenario": "k8s-3g",
+  "seed": 1,
+  "primary_run_id": "no-vigil_k8s-3g_1",
+  "inject_s": 69.065,
+  "detect_s": null,
+  "diagnosis_s": null,
+  "remediation_s": null,
+  "gate_s": null,
+  "reconcile_s": null,
+  "watchdog_s": null,
+  "active_run_s": null,
+  "lock_wait_s": 0.0,
+  "total_s": null,
+  "per_run": []
+}
