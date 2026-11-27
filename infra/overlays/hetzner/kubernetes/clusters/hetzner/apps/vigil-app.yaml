@@ -48,7 +48,7 @@ spec:
         - --vm
         - '1'
         - --vm-bytes
-        - 50M
+        - 24M
         - --vm-keep
         - --timeout
         - '0'
