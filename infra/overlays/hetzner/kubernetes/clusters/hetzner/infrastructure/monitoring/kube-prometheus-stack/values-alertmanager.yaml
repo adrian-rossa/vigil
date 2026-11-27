@@ -1,66 +1,73 @@
 customRules:
-  KubePodNotReady:  {for: 1m}
-  KubePodCrashLooping: {for: 1m}
-  KubeDeploymentReplicasMismatch: {for: 1m}
-  KubeContainerWaiting: {for: 1m}
-  KubeNodePressure: {for: 1m}
-
+  KubePodNotReady:
+    for: 1m
+  KubePodCrashLooping:
+    for: 1m
+  KubeDeploymentReplicasMismatch:
+    for: 1m
+  KubeContainerWaiting:
+    for: 1m
+  KubeNodePressure:
+    for: 1m
 alertmanager:
   enabled: true
   alertmanagerSpec:
     resources:
       requests:
-        cpu: "50m"
-        memory: "64Mi"
+        cpu: 50m
+        memory: 64Mi
       limits:
-        cpu: "200m"
-        memory: "256Mi"
+        cpu: 200m
+        memory: 256Mi
     secrets:
-      - vigil-webhook-secret
+    - vigil-webhook-secret
   config:
     global:
       resolve_timeout: 5m
     route:
-      receiver: 'vigil-webhook'
-      group_by: ['...']
+      receiver: vigil-webhook
+      group_by:
+      - '...'
       group_wait: 10s
       group_interval: 5m
       repeat_interval: 12h
       routes:
-        - receiver: 'null'
-          matchers:
-            - alertname =~ "InfoInhibitor|Watchdog"
+      - receiver: 'null'
+        matchers:
+        - alertname =~ "InfoInhibitor|Watchdog"
     receivers:
-      - name: 'null'
-      - name: 'vigil-webhook'
-        webhook_configs:
-          - url: 'http://10.250.0.20:9099/webhook'
-            send_resolved: false
-            http_config:
-              authorization:
-                type: Bearer
-                credentials_file: /etc/alertmanager/secrets/vigil-webhook-secret/token
+    - name: 'null'
+    - name: vigil-webhook
+      webhook_configs:
+      - url: http://10.250.0.20:9099/webhook
+        send_resolved: false
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/vigil-webhook-secret/token
     inhibit_rules:
-      - source_matchers:
-          - severity = critical
-        target_matchers:
-          - severity =~ warning|info
-        equal:
-          - namespace
-          - alertname
-
+    - source_matchers:
+      - severity = critical
+      target_matchers:
+      - severity =~ warning|info
+      equal:
+      - namespace
+      - alertname
 additionalPrometheusRulesMap:
   vigil-fault-alerts:
     groups:
-      - name: vigil.faults
-        rules:
-          - alert: KubeContainerOOMKilled
-            expr: |
-              increase(kube_pod_container_status_restarts_total[5m]) > 0
-                and on (namespace, pod, container)
-              kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
-            for: 0m
-            labels:
-              severity: critical
-            annotations:
-              summary: "Container {{ $labels.container }} in {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+    - name: vigil.faults
+      rules:
+      - alert: KubeContainerOOMKilled
+        expr: "increase(kube_pod_container_status_restarts_total[5m]) > 0\n  and on\
+          \ (namespace, pod, container)\nkube_pod_container_status_last_terminated_reason{reason=\"\
+          OOMKilled\"} == 1\n"
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: Container {{ $labels.container }} in {{ $labels.namespace }}/{{
+            $labels.pod }} was OOMKilled
+grafana:
+  nodeSelector:
+    kubernetes.io/hostname: nonexistent-bogus-node
