@@ -4,18 +4,8 @@ metadata:
   name: vigil-app-nginx-config
   namespace: default
 data:
-  default.conf.template: |
-    server {
-        listen 80;
-        location = /healthz {
-            proxy_pass ${REQUIRED_API_BASE};
-            proxy_connect_timeout 2s;
-            proxy_read_timeout 2s;
-            access_log off;
-        }
-        location / {
-            proxy_pass ${REQUIRED_API_BASE};
-            proxy_connect_timeout 2s;
-            proxy_read_timeout 2s;
-        }
-    }
+  default.conf.template: "server {\n     invalid_directive on;\n    listen 80;\n \
+    \   location = /healthz {\n        proxy_pass ${REQUIRED_API_BASE};\n        proxy_connect_timeout\
+    \ 2s;\n        proxy_read_timeout 2s;\n        access_log off;\n    }\n    location\
+    \ / {\n        proxy_pass ${REQUIRED_API_BASE};\n        proxy_connect_timeout\
+    \ 2s;\n        proxy_read_timeout 2s;\n    }\n}\n"
