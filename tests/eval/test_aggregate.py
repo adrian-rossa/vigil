@@ -1547,3 +1547,145 @@ def test_aggregate_cmd_fails_on_mixed_targets(tmp_path: Path) -> None:
     )
     assert result.exit_code != 0
     assert "several targets" in result.output
+
+
+def test_cohens_kappa_binary_cases() -> None:
+    from eval.aggregate import cohens_kappa
+
+    assert cohens_kappa([], []) is None
+    assert cohens_kappa([True, False, True, False], [True, False, True, False]) == 1.0
+    assert cohens_kappa([True, True, True], [True, True, True]) == 1.0
+    # 5/6 observed vs 0.5 chance -> kappa = 2/3
+    assert cohens_kappa(
+        [True, True, True, False, False, False],
+        [True, True, False, False, False, False],
+    ) == 0.6667
+
+
+def test_aggregate_rewrites_run_map_and_summarizes_eval_artifacts(
+    tmp_path: Path,
+) -> None:
+    from eval.aggregate import aggregate_runs, write_report
+
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    index_path = tmp_path / "runs_index.jsonl"
+    scenarios_dir = tmp_path / "scenarios"
+    _make_scenarios_dir(scenarios_dir, "k8s-pair-1", "k8s")
+
+    # Vigil persisted a real-alert run as default "k8s-1" with stale diag_accuracy.
+    _write_run(
+        runs_dir,
+        index_path,
+        run_id="alert-run-1",
+        scenario="k8s-1",
+        seed=1,
+        model="claude-sonnet-4-6",
+        diagnosis_accuracy=False,
+    )
+    (runs_dir / "run_map.json").write_text(
+        json.dumps({"alert-run-1": "k8s-pair-1"}), encoding="utf-8"
+    )
+    (runs_dir / "alert-run-1_score.json").write_text(
+        json.dumps(
+            {
+                "scenario": "k8s-pair-1",
+                "primary_run_id": "alert-run-1",
+                "n_faults": 2,
+                "n_detected": 2,
+                "n_attributed": 1,
+                "n_remediated": 2,
+                "all_remediated": True,
+                "collision": False,
+                "noise_run_ids": ["noise-1"],
+                "time_to_last_fix_s": 310.0,
+                "faults": [
+                    {"id": "a", "attributed": True},
+                    {"id": "b", "attributed": False},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (runs_dir / "alert-run-1_timing.json").write_text(
+        json.dumps(
+            {
+                "scenario": "k8s-pair-1",
+                "detect_s": 12.0,
+                "gate_s": 45.0,
+                "active_run_s": 180.0,
+                "total_s": 310.0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    # Fault a graded True, fault b graded False, fault c unscored (excluded!).
+    (runs_dir / "alert-run-1_judge.json").write_text(
+        json.dumps(
+            {
+                "scenario": "k8s-pair-1",
+                "primary_run_id": "alert-run-1",
+                "judge_model": "pinned-judge-v1",
+                "faults": [
+                    {
+                        "id": "a",
+                        "verdict": "True",
+                        "composite_score": 0.9,
+                        "dimensions": {
+                            "D1": {"score": 1.0},
+                            "D2": {"score": 1.0},
+                            "D3": {"score": 0.67},
+                        },
+                    },
+                    {
+                        "id": "b",
+                        "verdict": "False",
+                        "composite_score": 0.3,
+                        "dimensions": {
+                            "D1": {"score": 0.33},
+                            "D2": {"score": 0.33},
+                            "D3": {"score": 0.33},
+                        },
+                    },
+                    {
+                        "id": "c",
+                        "verdict": None,
+                        "composite_score": None,
+                        "unscored_reason": "judge_parse_failure",
+                    },
+                ],
+                "relationship": {"expected": "independent", "correct": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = aggregate_runs(runs_dir, index_path, scenarios_dir)
+
+    # D2 rewrite moved the run out of "k8s-1" into "k8s-pair-1" + cleared diag_accuracy.
+    assert "k8s-pair-1" in summary["by_scenario"]
+    assert "k8s-1" not in summary["by_scenario"]
+    assert summary["by_scenario"]["k8s-pair-1"]["diag_total"] == 0
+
+    mf = summary["multi_fault"]["k8s-pair-1"]
+    assert mf["all_remediated_rate"] == 1.0
+    assert mf["headline_mttr_p50_s"] == 310.0
+    assert mf["mean_noise_runs"] == 1.0
+
+    assert summary["timings"]["overall"]["gate_s"]["p50"] == 45.0
+    assert summary["timings"]["overall"]["total_s"]["p50"] == 310.0
+
+    # Unscored fault c is excluded: 1 True / 2 graded = 0.5, not 1 / 3.
+    assert summary["judge"]["overall"]["n_graded"] == 2
+    assert summary["judge"]["overall"]["n_unscored"] == 1
+    assert summary["judge"]["overall"]["attributed_rate"] == 0.5
+    assert summary["judge"]["overall"]["relationship_correct_rate"] == 1.0
+    assert summary["judge"]["rule_vs_judge"]["agreement_rate"] == 1.0
+    assert summary["judge"]["rule_vs_judge"]["cohens_kappa"] == 1.0
+
+    out_dir = tmp_path / "results"
+    write_report(summary, out_dir)
+    report = (out_dir / "REPORT.md").read_text()
+    assert "## Multi-Fault & Headline MTTR" in report
+    assert "## Phase Timing Percentiles" in report
+    assert "## LLM Judge & Rule Agreement" in report

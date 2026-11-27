@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 import logging
 import statistics
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 from orchestrator.models import DEFAULT_EVAL_TARGET, EVAL_TARGETS
+
+from eval import score as score_lib
+from eval.traffic import percentile
 
 log = logging.getLogger(__name__)
 
@@ -415,6 +419,238 @@ def _planned_run_count(
     return len(planned_scenarios) * seeds_per_scenario
 
 
+_TIMER_KEYS: tuple[str, ...] = (
+    "inject_s",
+    "detect_s",
+    "diagnosis_s",
+    "remediation_s",
+    "gate_s",
+    "reconcile_s",
+    "watchdog_s",
+    "active_run_s",
+    "lock_wait_s",
+    "total_s",
+)
+
+
+def cohens_kappa(
+    labels_a: Sequence[bool], labels_b: Sequence[bool]
+) -> float | None:
+    """Binary Cohens kappa for inter rate agreement (judge vs human)"""
+    if len(labels_a) != len(labels_b):
+        raise ValueError("Label sequences must have the same length")
+    n = len(labels_a)
+    if n == 0:
+        return None
+    # Observed agreement:
+    p_o = sum(bool(a) == bool(b) for a, b in zip(labels_a, labels_b)) / n
+    p_a = sum(bool(a) for a in labels_a) / n
+    p_b = sum(bool(b) for b in labels_b) / n
+    # Chance agreement:
+    p_e = p_a * p_b + (1 - p_a) * (1 - p_b)
+    # Final Score:
+    if p_e == 1.0:
+        return 1.0 if p_o == 1.0 else 0.0
+    return round((p_o - p_e) / (1.0 - p_e), 4)
+
+
+def _apply_run_map(records: list[dict], runs_dir: Path) -> None:
+    """Rewrite RunRecord scenario from run_map.json, clear diag score"""
+    run_map = score_lib.load_run_map(runs_dir)
+    if not run_map:
+        return
+    for rec in records:
+        mapped = run_map.get(str(rec.get("run_id") or ""))
+        if mapped and rec.get("scenario") != mapped:
+            rec["scenario"] = mapped
+            rec["diagnosis_accuracy"] = None
+
+
+def _load_json_files(runs_dir: Path, pattern: str) -> list[dict[str, Any]]:
+    if not runs_dir.is_dir():
+        return []
+    rows: list[dict[str, Any]] = []
+    for path in sorted(runs_dir.glob(pattern)):
+        try:
+            obj = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(obj, dict):
+            rows.append(obj)
+    return rows
+
+
+def _summarize_multi_fault(
+    score_rows: Sequence[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    by_scen: dict[str, list[dict[str, Any]]] = {}
+    for row in score_rows:
+        sid = str(row.get("scenario") or "")
+        if sid:
+            by_scen.setdefault(sid, []).append(row)
+
+    out: dict[str, dict[str, Any]] = {}
+    for sid, rows in sorted(by_scen.items()):
+        n_att = len(rows)
+        n_faults = sum(int(row.get("n_faults") or 0) for row in rows)
+        n_det = sum(int(row.get("n_detected") or 0) for row in rows)
+        n_attr = sum(int(row.get("n_attributed") or 0) for row in rows)
+        n_rem = sum(int(row.get("n_remediated") or 0) for row in rows)
+        n_all_rem = sum(1 for row in rows if row.get("all_remediated"))
+        n_coll = sum(1 for row in rows if row.get("collision"))
+        noise_counts = [len(row.get("noise_run_ids") or []) for row in rows]
+        mttrs = [
+            float(row["time_to_last_fix_s"])
+            for row in rows
+            if isinstance(row.get("time_to_last_fix_s"), (int, float))
+        ]
+        out[sid] = {
+            "n_attempts": n_att,
+            "n_faults": n_faults,
+            "fault_detected_rate": round(n_det / n_faults, 4) if n_faults else None,
+            "fault_attributed_rate": round(n_attr / n_faults, 4) if n_faults else None,
+            "fault_remediated_rate": round(n_rem / n_faults, 4) if n_faults else None,
+            "all_remediated_rate": round(n_all_rem / n_att, 4) if n_att else 0.0,
+            "collision_rate": round(n_coll / n_att, 4) if n_att else 0.0,
+            "mean_noise_runs": round(statistics.mean(noise_counts), 2)
+            if noise_counts
+            else 0.0,
+            "headline_mttr_p50_s": percentile(mttrs, 50),
+            "headline_mttr_p95_s": percentile(mttrs, 95),
+        }
+    return out
+
+
+def _summarize_timings(
+    timing_rows: Sequence[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    if not timing_rows:
+        return {}
+    buckets: dict[str, list[dict[str, Any]]] = {"overall": list(timing_rows)}
+    for row in timing_rows:
+        sid = str(row.get("scenario") or "")
+        if sid:
+            buckets.setdefault(sid, []).append(row)
+
+    out: dict[str, dict[str, Any]] = {}
+    for bucket, rows in buckets.items():
+        stats: dict[str, Any] = {"n_attempts": len(row)}
+        for key in _TIMER_KEYS:
+            vals = [
+                float(row[key])
+                for row in rows
+                if isinstance(row.get(key), (int, float))
+            ]
+            stats[key] = {
+                "n": len(vals),
+                "p50": percentile(vals, 50),
+                "p95": percentile(vals, 95),
+            }
+        out[bucket] = stats
+    return out
+
+
+def _summarize_judge(
+    judge_rows: Sequence[dict[str, Any]],
+    score_rows: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    if not judge_rows:
+        return {}
+    rule_lookup: dict[tuple[str, str], bool] = {}
+    for row in score_rows:
+        pid = str(row.get("primary_run_id") or "")
+        for fault in row.get("faults") or []:
+            fid = str(fault.get("id") or "")
+            if pid and fid and isinstance(fault.get("attributed"), bool):
+                rule_lookup[(pid, fid)] = fault["attributed"]
+    
+    by_scen: dict[str, list[dict[str, Any]]] = {}
+    for row in judge_rows:
+        sid = str(row.get("scenario") or "")
+        if sid:
+            by_scen.setdefault(sid, []).append(row)
+    
+    rule_labels: list[bool] = []
+    judge_labels: list[bool] = []
+
+
+    def _rollup(rows: Sequence[dict[str, Any]], collect_pairs: bool) -> dict[str, Any]:
+        graded = 0
+        unscored = 0
+        passed = 0
+        composites: list[float] = []
+        dims: dict[str, list[float]] = {"D1": [], "D2": [], "D3": []}
+        rel_graded = 0
+        rel_correct = 0
+
+        for row in rows:
+            pid = str(row.get("primary_run_id") or "")
+            for fault in row.get("faults") or []:
+                verdict = fault.get("verdict")
+                if verdict is None:
+                    unscored += 1
+                    continue
+                is_true = verdict == "True"
+                graded += 1
+                passed += int(is_true)
+                comp = fault.get("composite_score")
+                if isinstance(comp, (int, float)):
+                    composites.append(float(comp))
+                for did in ["D1", "D2", "D3"]:
+                    d_val = (fault.get("dimensions") or {}).get(did, {}).get("score")
+                    if isinstance(d_val, (int, float)):
+                        dims[did].append(float(d_val))
+                if collect_pairs:
+                    fid = str(fault.get("id") or "")
+                    if (pid, fid) in rule_lookup:
+                        rule_labels.append(rule_lookup[(pid, fid)])
+                        judge_labels.append(is_true)
+        
+            rel = row.get("relationship")
+            if isinstance(rel, dict) and rel.get("correct") is not None:
+                rel_graded += 1
+                rel_correct += int(bool(rel["correct"]))
+
+        return {
+            "n_graded": graded,
+            "n_unscored": unscored,
+            "attributed_rate": round(passed / graded, 4) if graded else None,
+            "mean_composite": round(statistics.mean(composites), 3)
+            if composites
+            else None,
+            "mean_dimensions": {
+                did: (round(statistics.mean(vals), 3) if vals else None)
+                for did, vals in dims.items()
+            },
+            "relationship_n": rel_graded,
+            "relationship_correct_rate": (
+                round(rel_correct / rel_graded, 4) if rel_graded else None
+            ),
+        }
+
+    overall = _rollup(judge_rows, collect_pairs=True)
+    scen_summary = {
+        sid: _rollup(rows, collect_pairs=False) for sid, rows in sorted(by_scen.items())
+    }
+    n_comp = len(rule_labels)
+    agree = (
+        round(sum(a == b for a, b in zip(rule_labels, judge_labels)) / n_comp, 4)
+        if n_comp
+        else None
+    )
+    models = sorted({str(row.get("judge_model") or "") for row in judge_rows} - {""})
+    return {
+        "judge_models": models,
+        "overall": overall,
+        "by_scenario": scen_summary,
+        "rule_vs_judge": {
+            "n_compared": n_comp,
+            "agreement_rate": agree,
+            "cohens_kappa": cohens_kappa(rule_labels, judge_labels),
+        },
+    }
+
+
 def aggregate_runs(
     runs_dir: Path,
     index_path: Path,
@@ -422,7 +658,9 @@ def aggregate_runs(
     seed_count: int | None = None,
 ) -> dict[str, Any]:
     """Compute per-model and per-scenario metric tables plus escalation accuracy."""
-    records = _last_try_per_incident(_load_records(runs_dir, index_path))
+    raw_records = _load_records(runs_dir, index_path)
+    _apply_run_map(raw_records, runs_dir)
+    records = _last_try_per_incident(raw_records)
     target = _single_target(records)
     planned_scenarios: list[str] = (
         sorted(p.name for p in scenarios_dir.iterdir() if p.is_dir())
@@ -439,6 +677,9 @@ def aggregate_runs(
             "totals": {"n": 0, "n_models": 0, "n_scenarios": 0},
             "planned_scenarios": planned_scenarios,
             "target": target,
+            "multi_fault": {},
+            "timings": {},
+            "judge": {},
         }
 
     by_model: dict[str, list[dict]] = {}
@@ -466,6 +707,10 @@ def aggregate_runs(
         if row.get("n_seeds", 0) > 0 and row["passed"] == row["n_seeds"]
     )
 
+    score_rows = _load_json_files(runs_dir, "*_score.json")
+    timing_rows = _load_json_files(runs_dir, "*_timing.json")
+    judge_rows = _load_json_files(runs_dir, "*_judge.json")
+
     return {
         "by_model": model_summary,
         "by_scenario": scenario_summary,
@@ -481,6 +726,9 @@ def aggregate_runs(
         },
         "planned_scenarios": planned_scenarios,
         "target": target,
+        "multi_fault": _summarize_multi_fault(score_rows),
+        "timings": _summarize_timings(timing_rows),
+        "judge": _summarize_judge(judge_rows, score_rows),
     }
 
 
@@ -653,6 +901,61 @@ def write_report(summary: dict[str, Any], output_dir: Path) -> None:
             )
     lines.append("")
 
+    multi_fault = summary.get("multi_fault") or {}
+    if multi_fault:
+        lines += [
+            "## Multi-Fault & Headline MTTR",
+            "",
+            "| Scenario | Attempts | Fault Remediated | All Remediated | "
+            "Collision | Headline MTTR p50/p95 (s) | Mean Noise Runs |",
+            "|---|---:|---:|---:|---:|---|---:|",
+        ]
+        for sid, row in multi_fault.items():
+            p50 = _fmt(row.get("headline_mttr_p50_s"))
+            p95 = _fmt(row.get("headline_mttr_p95_s"))
+            lines.append(
+                f"| {sid} | {row['n_attempts']} | "
+                f"{_fmt(row.get('fault_remediated_rate'))} | "
+                f"{_fmt(row.get('all_remediated_rate'))} | "
+                f"{_fmt(row.get('collision_rate'))} | "
+                f"{p50}/{p95} | {row['mean_noise_runs']:.2f} |"
+            )
+        lines.append("")
+
+    timings_summary = summary.get("timings") or {}
+    overall_timings = timings_summary.get("overall")
+    if overall_timings:
+        lines += [
+            "## Phase Timing Percentiles",
+            "",
+            "| Phase | N | p50 (s) | p95 (s) |",
+            "|---|---:|---:|---:|",
+        ]
+        for key in _TIMER_KEYS:
+            slot = overall_timings.get(key) or {}
+            lines.append(
+                f"| {key} | {slot.get('n', 0)} | "
+                f"{_fmt(slot.get('p50'))} | {_fmt(slot.get('p95'))} |"
+            )
+            lines.append("")
+
+    judge_summary = summary.get("judge") or {}
+    if judge_summary:
+        ov = judge_summary.get("overall") or {}
+        rvj = judge_summary.get("rule_vs_judge") or {}
+        models_str = ", ".join(judge_summary.get("judge_models") or []) or "unpinned"
+        lines += [
+            "## LLM Judge & Rule Agreement",
+            "",
+            f"Judge model(s): {models_str} · "
+            f"Graded faults: {ov.get('n_graded', 0)} "
+            f"(unscored excluded: {ov.get('n_unscored', 0)}) · "
+            f"Judge attribution rate: {_fmt(ov.get('attributed_rate'))} · "
+            f"Rule-vs-Judge agreement: {_fmt(rvj.get('agreement_rate'))} "
+            f"(kappa={_fmt(rvj.get('cohens_kappa'))}, n={rvj.get('n_compared', 0)}).",
+            "",
+        ] 
+
     lines.append("---")
     lines.append("")
     seed_counts = [row["n_runs"] for row in summary["by_scenario"].values()]
@@ -676,7 +979,9 @@ def write_step_summary(
     scenarios_dir: Path | None = None,
     seed_count: int | None = None,
 ) -> None:
-    records = _last_try_per_incident(_load_records(runs_dir, index_path))
+    raw_records = _load_records(runs_dir, index_path)
+    _apply_run_map(raw_records, runs_dir)
+    records = _last_try_per_incident(raw_records)
     _single_target(records)
     if scenarios_dir is not None:
         _correct_escalation_success(records, scenarios_dir)
