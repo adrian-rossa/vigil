@@ -15,8 +15,6 @@ spec:
       labels:
         app: vigil-app
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: nonexistent-bogus-node
       containers:
       - name: vigil-app
         image: nginx:stable
