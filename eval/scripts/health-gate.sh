@@ -43,12 +43,16 @@ check_orchestrator_ready() {
 }
 
 check_vigil_app_ready() {
-  local desired ready
+  local desired replicas updated ready
   desired=$(kubectl --kubeconfig "$KUBECONFIG_PATH" get deployment "$DEPLOYMENT" \
     -n "$NAMESPACE" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "")
+  replicas=$(kubectl --kubeconfig "$KUBECONFIG_PATH" get deployment "$DEPLOYMENT" \
+    -n "$NAMESPACE" -o jsonpath='{.status.replicas}' 2>/dev/null || echo "0")
+  updated=$(kubectl --kubeconfig "$KUBECONFIG_PATH" get deployment "$DEPLOYMENT" \
+    -n "$NAMESPACE" -o jsonpath='{.status.updatedReplicas}' 2>/dev/null || echo "0")
   ready=$(kubectl --kubeconfig "$KUBECONFIG_PATH" get deployment "$DEPLOYMENT" \
     -n "$NAMESPACE" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-  [ -n "$desired" ] && [ "$ready" = "$desired" ]
+  [ -n "$desired" ] && [ "$replicas" = "$desired" ] && [ "$updated" = "$desired" ] && [ "$ready" = "$desired" ]
 }
 
 while [ "$(date +%s)" -lt "$deadline" ]; do

@@ -16,6 +16,18 @@ EVAL_BRANCH="${VIGIL_EVAL_BRANCH:-chore/eval-cluster-baseline}"
 
 echo "between-scenarios: prev=$PREV_SCENARIO group=$GROUP" >&2
 
+echo "between-scenarios: stop vigil-orchestrator before reset" >&2
+if [ -n "$AGENT_HOST" ]; then
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "$SSH_USER@$AGENT_HOST" \
+    "systemctl stop vigil-orchestrator.service" \
+    || echo "between-scenarios: orchestrator stop failed, continuing" >&2
+else
+  read -r -a STOP_CMD <<< "${VIGIL_ORCHESTRATOR_STOP_CMD:-systemctl stop vigil-orchestrator.service}"
+  "${STOP_CMD[@]}" \
+  || echo "between-scenarios: orchestrator stop failed, continuing" >&2
+fi
+
 echo "between-scenarios: step 0/6 - reset $EVAL_BRANCH to origin/main" >&2
 "$REPO_ROOT/eval/scripts/reset-eval-baseline.sh"
 
@@ -45,15 +57,22 @@ else
   echo "between-scenarios: step 4/6 - skipped (group=$GROUP)" >&2
 fi
 
-echo "between-scenarios: step 5/6 - restart vigil-orchestrator" >&2
+echo "between-scenarios: wait for vigil-app rollout before starting orchestrator" >&2
+kubectl --kubeconfig "$EVAL_RUNNER_KUBECONFIG" \
+  rollout status deployment/vigil-app -n default --timeout=180s \
+  || echo "between-scenarios: vigil-app rollout wait timeout, continuing" >&2
+ 
+echo "between-scenarios: step 5/6 - start vigil-orchestrator" >&2
 if [ -n "$AGENT_HOST" ]; then
   ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
     "$SSH_USER@$AGENT_HOST" \
-    "systemctl restart vigil-orchestrator.service"
+    "systemctl start vigil-orchestrator.service"
 else
-  read -r -a RESTART_CMD <<< "${VIGIL_ORCHESTRATOR_RESTART_CMD:-systemctl restart vigil-orchestrator.service}"
-  "${RESTART_CMD[@]}" \
-    || echo "between-scenarios: orchestrator restart failed, continuing" >&2
+
+  START_ORCH_CMD="${VIGIL_ORCHESTRATOR_START_CMD:-${VIGIL_ORCHESTRATOR_RESTART_CMD:-systemctl start vigil-orchestrator.service}}"
+    read -r -a START_CMD <<< "$START_ORCH_CMD"
+    "${START_CMD[@]}" \
+      || echo "between-scenarios: orchestrator start failed, continuing" >&2
 fi
 
 echo "between-scenarios: step 6/6 - health gate" >&2
