@@ -1,0 +1,40 @@
+{
+  "by_model": {},
+  "by_scenario": {},
+  "escalation": {},
+  "totals": {
+    "n": 0,
+    "n_models": 0,
+    "n_scenarios": 0
+  },
+  "planned_scenarios": [
+    "cross-pair-1",
+    "cross-pair-1-noise",
+    "deceptive-2",
+    "disk-pressure",
+    "k8s-1g",
+    "k8s-2g",
+    "k8s-3g",
+    "k8s-3g-noise",
+    "k8s-3g-stepped",
+    "k8s-4g",
+    "k8s-5g",
+    "k8s-cascade-1",
+    "k8s-pair-1",
+    "k8s-pair-1-noise",
+    "k8s-pair-1-stepped",
+    "k8s-pair-samefile-1",
+    "k8s-rollback-1",
+    "live-quota-injected",
+    "os-1",
+    "os-1g",
+    "os-drift-sysctl",
+    "os-drift-sysctl-stepped",
+    "os-portrange-1",
+    "os-stale-generation"
+  ],
+  "target": "hetzner",
+  "multi_fault": {},
+  "timings": {},
+  "judge": {}
+}

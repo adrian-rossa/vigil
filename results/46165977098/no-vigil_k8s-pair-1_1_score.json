@@ -1,0 +1,43 @@
+{
+  "scenario": "k8s-pair-1",
+  "seed": 1,
+  "primary_run_id": "no-vigil_k8s-pair-1_1",
+  "detection_used": "none",
+  "n_runs": 0,
+  "fault_run_ids": [],
+  "noise_run_ids": [],
+  "run_alerts": {},
+  "n_faults": 2,
+  "n_detected": 0,
+  "n_attributed": 0,
+  "n_remediated": 1,
+  "all_remediated": false,
+  "time_to_last_fix_s": null,
+  "collision": false,
+  "colliding_paths": [],
+  "touched_paths_by_incident": {},
+  "faults": [
+    {
+      "id": "a",
+      "component": "service/app-backend",
+      "severity": "user_facing",
+      "detected": false,
+      "attributed": false,
+      "remediated": false,
+      "passed_at": null,
+      "time_to_restore_s": null,
+      "touched_paths": []
+    },
+    {
+      "id": "b",
+      "component": "deployment/kube-prometheus-stack-grafana",
+      "severity": "internal",
+      "detected": false,
+      "attributed": false,
+      "remediated": true,
+      "passed_at": "2026-11-28T17:20:53Z",
+      "time_to_restore_s": 208.998,
+      "touched_paths": []
+    }
+  ]
+}

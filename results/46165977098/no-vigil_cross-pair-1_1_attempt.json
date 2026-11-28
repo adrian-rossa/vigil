@@ -1,0 +1,25 @@
+{
+  "scenario": "cross-pair-1",
+  "seed": 1,
+  "primary_run_id": "no-vigil_cross-pair-1_1",
+  "detection_used": "none",
+  "inject_s": 159.123,
+  "n_runs": 0,
+  "run_ids": [],
+  "gaps_s": [],
+  "injected_at": "2026-11-28T16:55:34Z",
+  "probe_results": {
+    "a": {
+      "remediated": false,
+      "passed_at": null,
+      "passed_ts": null,
+      "time_to_restore_s": null
+    },
+    "b": {
+      "remediated": true,
+      "passed_at": "2026-11-28T16:58:59Z",
+      "passed_ts": 1795885139.4607291,
+      "time_to_restore_s": 205.461
+    }
+  }
+}
