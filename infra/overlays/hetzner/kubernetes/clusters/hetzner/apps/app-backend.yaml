@@ -18,18 +18,18 @@ spec:
       nodeSelector:
         kubernetes.io/hostname: vigil-worker-1
       containers:
-        - name: app-backend
-          image: hashicorp/http-echo
-          args:
-            - "-listen=:80"
-            - "-text=ok"
-          ports:
-            - containerPort: 80
-          resources:
-            requests:
-              memory: "16Mi"
-            limits:
-              memory: "64Mi"
+      - name: app-backend
+        image: hashicorp/http-echo
+        args:
+        - -listen=:80
+        - -text=ok
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: 16Mi
+          limits:
+            memory: 64Mi
 ---
 apiVersion: v1
 kind: Service
@@ -42,5 +42,5 @@ spec:
   selector:
     app: app-backend
   ports:
-    - port: 80
-      targetPort: 80
+  - port: 80
+    targetPort: 8080
