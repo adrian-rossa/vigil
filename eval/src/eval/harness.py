@@ -1274,11 +1274,12 @@ async def run_one(
         inject_start = time.monotonic()
         if inject_sh.is_file():
             log.info("running inject.sh for %s", scenario_id)
-            _run_script(inject_sh, seed, verbose=verbose)
+            await asyncio.to_thread(_run_script, inject_sh, seed, verbose=verbose)
         elif use_fault_lib:
             log.info("running Python fault injection for %s", scenario_id)
             repo_root = Path(os.environ.get("VIGIL_REPO_ROOT") or ".")
-            fault_lib.inject_faults(
+            await asyncio.to_thread(
+                fault_lib.inject_faults,
                 scenario_id,
                 data,
                 repo_root,
@@ -1304,10 +1305,12 @@ async def run_one(
 
         try:
             if head_before and head_after and head_after != head_before:
-                _wait_for_flux_uptake(scenario_id, head_after)
+                await asyncio.to_thread(_wait_for_flux_uptake, scenario_id, head_after)
             if verify_checks:
                 for check in verify_checks:
-                    _wait_for_inject_symptom(scenario_id, check, scenarios_dir)
+                    await asyncio.to_thread(
+                        _wait_for_inject_symptom, scenario_id, check, scenarios_dir
+                    )
             else:
                 log.warning(
                     "no verify_broken block for %s - skipping inject assertion",

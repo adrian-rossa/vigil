@@ -7,10 +7,11 @@ import logging
 import math
 import socket
 import subprocess
+import tempfile
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import IO, Any
 
 import httpx
 
@@ -56,6 +57,9 @@ class TrafficStats:
     total: int = 0
     ok: int = 0
     errors: int = 0
+    http_errors: int = 0
+    transport_errors: int = 0
+    last_error: str | None = None
     latencies_ms: list[float] = field(default_factory=list)
 
     def to_summary(self, duration_s: float, profile: Sequence[int]) -> dict[str, Any]:
@@ -66,6 +70,9 @@ class TrafficStats:
             "total_requests": self.total,
             "ok_2xx": self.ok,
             "errors": self.errors,
+            "http_errors": self.http_errors,
+            "transport_errors": self.transport_errors,
+            "last_error": self.last_error,
             "error_rate": error_rate,
             "p50_ms": percentile(self.latencies_ms, 50),
             "p95_ms": percentile(self.latencies_ms, 95),
@@ -80,12 +87,18 @@ def _get_free_local_port() -> int:
 
 
 def _wait_for_port(
-    port: int, proc: subprocess.Popen[str], timeout_s: float = 15.0
+    port: int, 
+    proc: subprocess.Popen[str], 
+    timeout_s: float = 15.0,
+    stderr_file: IO[str] | None = None
 ) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            err = proc.stderr.read().strip() if proc.stderr else ""
+            err = ""
+            if stderr_file is not None:
+                stderr_file.seek(0)
+                err = stderr_file.read().strip()
             raise RuntimeError(f"kubectl port-forward exited early: {err}")
         try:
             with socket.create_connection(("127.0.0.1", port), timeout=0.5):
@@ -128,11 +141,27 @@ class SteppedTrafficRunner:
         self.stats = TrafficStats()
         self._stop_event = asyncio.Event()
         self._proc: subprocess.Popen[str] | None = None
+        self._stderr_file: IO[str] | None = None
         self._task: asyncio.Task[None] | None = None
         self._in_flight: set[asyncio.Task[None]] = set()
         self._started_at = 0.0
+        self._consecutive_transport_errors = 0
+        self._logged_error = False
+
+    def _stop_port_forward(self) -> None:
+        if self._proc is not None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+            self._proc = None
+        if self._stderr_file is not None:
+            self._stderr_file.close()
+            self._stderr_file = None
 
     def _start_port_forward(self) -> str:
+        self._stop_port_forward()
         local_port = _get_free_local_port()
         cmd = ["kubectl"]
         if self.kubeconfig:
@@ -144,10 +173,16 @@ class SteppedTrafficRunner:
             self.service,
             f"{local_port}:{self.remote_port}",
         ]
+        self._stderr_file = tempfile.TemporaryFile(mode="w+")
         self._proc = subprocess.Popen(
-            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
+            cmd, stdout=subprocess.DEVNULL, stderr=self._stderr_file, text=True
         )
-        _wait_for_port(local_port, self._proc)
+        try:
+            _wait_for_port(local_port, self._proc, stderr_file=self._stderr_file)
+        except Exception:
+            self._stop_port_forward()
+            raise
+        self._consecutive_transport_errors = 0
         return f"http://127.0.0.1:{local_port}/"
 
     async def start(self) -> None:
@@ -164,12 +199,21 @@ class SteppedTrafficRunner:
             resp = await client.get(url, headers={"Connection": "close"})
             elapsed_ms = (time.monotonic() - scheduled_t) * 1000.0
             self.stats.latencies_ms.append(elapsed_ms)
+            self._consecutive_transport_errors = 0
             if 200 <= resp.status_code < 300:
                 self.stats.ok += 1
             else:
                 self.stats.errors += 1
-        except httpx.HTTPError:
+                self.stats.http_errors += 1
+                self.stats.last_error = f"HTTP {resp.status_code}"
+        except httpx.HTTPError as exc:
             self.stats.errors += 1
+            self.stats.transport_errors += 1
+            self._consecutive_transport_errors += 1
+            self.stats.last_error = f"{type(exc).__name__}: {exc}"
+            if not self._logged_error:
+                self._logged_error = True
+                log.warning("traffic runner error: %s", self.stats.last_error)
     
     async def _run_loop(self, url: str) -> None:
         limits = httpx.Limits(
@@ -184,6 +228,21 @@ class SteppedTrafficRunner:
             start = time.monotonic()
             next_due = start
             while not self._stop_event.is_set():
+                if self.target_url is None and (
+                    self._proc is None
+                    or self._proc.poll() is not None
+                    or self._consecutive_transport_errors >= 10
+                ):
+                    log.warning("port-forward died or stalled, reconnecting")
+                    self._stop_port_forward()
+                    await asyncio.sleep(2.0)
+                    try:
+                        url = await asyncio.to_thread(self._start_port_forward)
+                    except RuntimeError as exc:
+                        self.stats.last_error = str(exc)
+                        await asyncio.sleep(2.0)
+                        continue
+                    next_due = time.monotonic()
                 now = time.monotonic()
                 rps = target_rps(now - start, self.profile, self.phase_s, self.ramp_s)
                 if rps <= 0:
@@ -214,13 +273,7 @@ class SteppedTrafficRunner:
                 )
             except TimeoutError:
                 self._task.cancel()
-        if self._proc is not None:
-            self._proc.terminate()
-            try:
-                self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-            self._proc = None
+        self._stop_port_forward()
         duration_s = (
             max(0.0, time.monotonic() - self._started_at) if self._started_at else 0.0
         )

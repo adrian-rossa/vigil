@@ -49,4 +49,26 @@ async def test_stepped_runner_counts_ok_and_error_responses() -> None:
     assert summary["total_requests"] >= 3
     assert summary["ok_2xx"] >= 2
     assert summary["errors"] >= 1
+    assert summary["http_errors"] >= 1
+    assert summary["transport_errors"] == 0
+    assert summary["last_error"] == "HTTP 502"
     assert summary["p99_ms"] is not None
+
+
+async def test_stepped_runner_tracks_transport_errors() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom", request=request)
+
+    runner = SteppedTrafficRunner(
+        profile=[30],
+        target_url="http://vigil-app.local/",
+        transport=httpx.MockTransport(handler),
+    )
+    await runner.start()
+    await asyncio.sleep(0.12)
+    summary = await runner.stop()
+    assert summary["errors"] >= 1
+    assert summary["transport_errors"] >= 1
+    assert summary["http_errors"] == 0
+    assert summary["last_error"] is not None
+    assert "ConnectError" in summary["last_error"]
