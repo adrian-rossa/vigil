@@ -50,7 +50,7 @@ if [ "$GROUP" = "cross" ] || [ "$GROUP" = "os" ]; then
   for host in vigil-worker-1 vigil-worker-2; do
     ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
       "$SSH_USER@$host" \
-      "git -C /opt/nixos-config fetch origin && git -C /opt/nixos-config reset --hard origin/$EVAL_BRANCH && flock /var/lock/vigil-nixos-rebuild nixos-rebuild switch --flake /opt/nixos-config#\$(cat /etc/vigil/flake-attr)" \
+      "git -C /opt/nixos-config fetch origin && git -C /opt/nixos-config reset --hard origin/$EVAL_BRANCH && flock /var/lock/vigil-nixos-rebuild nixos-rebuild switch --flake /opt/nixos-config#\$(cat /etc/vigil/flake-attr) && (systemctl stop rollback-gate.timer 2>/dev/null || true) && systemctl restart systemd-sysctl.service" \
       || echo "between-scenarios: nixos-rebuild on $host failed, continuing" >&2
   done
 else
