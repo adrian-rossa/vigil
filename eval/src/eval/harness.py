@@ -259,13 +259,41 @@ def _svc_proxy_path(url: str) -> str | None:
     port = parsed.port or 80
     subpath = parsed.path.lstrip("/")
     return f"/api/v1/namespaces/{ns}/services/{svc}:{port}/proxy/{subpath}"
-    
+
+
+def _deployment_rolled_out(obj: dict) -> bool:
+    meta_gen = obj.get("metadata", {}).get("generation", 0)
+    status = obj.get("status", {})
+    obs_gen = status.get("observedGeneration", 0)
+    spec = obj.get("spec", {}).get("replicas", 0)
+    replicas = status.get("replicas", 0)
+    updated = status.get("updatedReplicas", 0)
+    avail = status.get("availableReplicas", 0)
+    unavail = status.get("unavailableReplicas", 0)
+    return (
+        spec > 0
+        and obs_gen >= meta_gen
+        and replicas == spec
+        and updated == spec
+        and avail == spec
+        and unavail == 0
+    )
+
 
 def _probe_passes(probe: dict, kubeconfig: str | None = None) -> bool:
     """True when the faults declared healthy state is positively observed"""
     kind = probe.get("kind")
 
     if kind == "http_ok":
+        deploy = probe.get("deployment")
+        if deploy:
+            ns = str(probe.get("namespace", "default"))
+            dr = _kubectl(
+                ["get", "deployment", str(deploy), "-n", ns, "-o", "json"],
+                kubeconfig,
+            )
+            if dr.returncode != 0 or not _deployment_rolled_out(json.loads(dr.stdout)):
+                return False
         url = str(probe["url"])
         proxy_path = _svc_proxy_path(url)
         if proxy_path is not None:
@@ -290,10 +318,7 @@ def _probe_passes(probe: dict, kubeconfig: str | None = None) -> bool:
         obj = json.loads(r.stdout)
         condition = probe.get("condition")
         if condition is None:
-            spec = obj.get("spec", {}).get("replicas", 0)
-            avail = obj.get("status", {}).get("availableReplicas", 0)
-            unavail = obj.get("status", {}).get("unavailableReplicas", 0)
-            return spec > 0 and avail == spec and unavail == 0
+            return _deployment_rolled_out(obj)
         for c in obj.get("status", {}).get("conditions", []):
             if c.get("type") == condition:
                 return str(c.get("status")) == str(probe.get("expect", "True"))

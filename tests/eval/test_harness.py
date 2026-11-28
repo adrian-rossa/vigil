@@ -1397,7 +1397,14 @@ def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
         res = MagicMock(returncode=0, stdout="")
         if args[0] == "get" and args[1] == "deployment":
             res.stdout = json.dumps(
-                {"spec": {"replicas": 2}, "status": {"availableReplicas": 2}}
+                {
+                    "spec": {"replicas": 2},
+                    "status": {
+                        "replicas": 2,
+                        "updatedReplicas": 2,
+                        "availableReplicas": 2,
+                    },
+                }
             )
         return res
 
@@ -1426,6 +1433,44 @@ def test_probe_passes_supports_svc_proxy_kube_condition_and_host_cmd(
             "command": "cat /proc/sys/net/ipv4/ip_forward",
             "expect": 1,
         }
+    )
+
+
+def test_probe_passes_rejects_stuck_rolling_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from eval.harness import _probe_passes
+
+    def fake_kubectl(args: list[str], kubeconfig: str | None = None) -> MagicMock:
+        res = MagicMock(returncode=0, stdout="")
+        if args[0] == "get" and args[1] == "deployment":
+            res.stdout = json.dumps(
+                {
+                    "spec": {"replicas": 1},
+                    "status": {
+                        "replicas": 2,
+                        "updatedReplicas": 1,
+                        "availableReplicas": 1,
+                    },
+                }
+            )
+        return res
+
+    monkeypatch.setattr(harness_mod, "_kubectl", fake_kubectl)
+
+    assert (
+        _probe_passes({"kind": "kube_condition", "resource": "deployment/vigil-app"})
+        is False
+    )
+    assert (
+        _probe_passes(
+            {
+                "kind": "http_ok",
+                "url": "http://vigil-app.default.svc/",
+                "deployment": "vigil-app",
+            }
+        )
+        is False
     )
 
 

@@ -40,6 +40,7 @@ faults:
       deployment: vigil-app
     health_probe:
       kind: http_ok
+      deployment: vigil-app
       url: http://vigil-app.default.svc/
       expect: 200
       window_s: 300
